@@ -5,5 +5,6 @@ window.BEYOND_ADMIN = {
   apiUrl: 'https://acmshulzlasrflbjsnhw.supabase.co/functions/v1/admin',
   schoolName: 'ビヨンド',
   envLabel: '開発用',   // 本番用の config.js では空にする
-  devLogin: true,       // 開発用：メール＋パスワードのログイン欄を出す（本番用の config.js では false。Edge Function 側も ADMIN_ALLOW_PASSWORD がないと通さない）
+  // 開発用：メール＋パスワードのログイン欄を出す（PC で開いたときだけ。Edge Function 側も ADMIN_ALLOW_PASSWORD がないと通さない。本番用の config.js では false）
+  devLogin: location.hostname === 'localhost' || location.hostname === '127.0.0.1',
 };
