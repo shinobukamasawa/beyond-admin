@@ -502,7 +502,8 @@
   }
   function describe(b) { return b.id + '　' + fmtD(b.date) + ' ' + hm(b.start) + '〜' + hm(b.end) + '\n' + b.studentName + ' さん／' + b.teacherName + '先生・' + b.store + '（' + b.course + '）\n状態：' + b.state; }
   function bookingAction(act, b, onDone) {
-    var done = function (r) { if (!r.ok) { toast(r.error, 'err'); return false; } toast(r.message); onDone(); return true; };
+    // 書き出しは応答のあとに行われるので、数秒後にもう一度読み直して「同期待ち」の印を消す
+    var done = function (r) { if (!r.ok) { toast(r.error, 'err'); return false; } toast(r.message); onDone(); setTimeout(onDone, 4000); return true; };
     if (act === 'move') { bookingForm(b, onDone); return; }
     if (act === 'requeue') { api('sync.requeue', { bookingId: b.id }).then(done); return; }
     if (act === 'cancel') {
@@ -566,7 +567,7 @@
         $('.save', bg).onclick = function () {
           var d = formData(form); if (b) d.bookingId = b.id;
           busy($('.save', bg), true);
-          api(b ? 'bookings.move' : 'bookings.add', d).then(function (r) { busy($('.save', bg), false); if (!r.ok) { showMsg(bg, r.error, 'err'); return; } toast(r.message); close(); if (onDone) onDone(); });
+          api(b ? 'bookings.move' : 'bookings.add', d).then(function (r) { busy($('.save', bg), false); if (!r.ok) { showMsg(bg, r.error, 'err'); return; } toast(r.message); close(); if (onDone) { onDone(); setTimeout(onDone, 4000); } });
         };
       } });
   }
