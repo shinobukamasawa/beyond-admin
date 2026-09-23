@@ -292,7 +292,7 @@
   // ---------- 先生 ----------
   function pageTeachers() {
     var v = shell('<h2>先生 <span class="sub">名前・担当店舗・対応コース・Google アカウント・カレンダー</span></h2>' +
-      '<div class="toolbar"><span class="muted small">先生の写真は後の段で入れます（それまでは生徒の画面に頭文字の丸）</span><span class="grow"></span><button type="button" class="btn sub" id="cal">カレンダーを作成・共有（未作成の先生）</button><button type="button" class="btn" id="new">＋ 新しい先生</button></div><div id="list"></div>');
+      '<div class="toolbar"><span class="muted small">写真は先生の行を押して登録します（生徒の先生選択画面に出ます。なければ頭文字の丸）</span><span class="grow"></span><button type="button" class="btn sub" id="cal">カレンダーを作成・共有（未作成の先生）</button><button type="button" class="btn" id="new">＋ 新しい先生</button></div><div id="list"></div>');
     var draw = function () {
       $('#list').innerHTML = '<table class="tbl"><thead><tr><th></th><th>先生ID</th><th>名前</th><th>担当店舗</th><th>対応コース</th><th>Google アカウント</th><th>色</th><th>ひとこと</th><th>カレンダー</th><th>状態</th></tr></thead><tbody>' +
         S.me.teachers.map(function (t) {
