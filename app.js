@@ -96,7 +96,7 @@
   function showMsg(bg, text, kind) { var m = $('.fmsg', bg); if (!m) { m = document.createElement('div'); m.className = 'fmsg'; $('.mb', bg).prepend(m); } m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ''; if (text) $('.mb', bg).scrollIntoView({ block: 'start' }); }
 
   // ---------- 枠組みとログイン ----------
-  var PAGES = [['home', 'ホーム'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['settings', '設定']];
+  var PAGES = [['home', 'ホーム'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
   function shell(inner) {
     var nav = PAGES.map(function (p) { return '<a href="#' + p[0] + '" class="' + (S.page === p[0] ? 'on' : '') + '">' + p[1] + '</a>'; }).join('');
     app.innerHTML = '<div class="topbar"><div class="brand">' + esc(CFG.schoolName) + ' 予約管理' + (CFG.envLabel ? '<span class="env">' + esc(CFG.envLabel) + '</span>' : '') + '</div><nav>' + nav + '</nav>' +
@@ -137,16 +137,16 @@
     var h = location.hash.replace(/^#/, '') || 'home', q = {};
     var i = h.indexOf('?'); if (i >= 0) { h.substring(i + 1).split('&').forEach(function (kv) { var p = kv.split('='); q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || ''); }); h = h.substring(0, i); }
     S.page = PAGES.some(function (p) { return p[0] === h; }) ? h : 'home'; S.query = q;
-    ({ home: pageHome, students: pageStudents, teachers: pageTeachers, shifts: pageShifts, bookings: pageBookings, settings: pageSettings })[S.page]();
+    ({ home: pageHome, students: pageStudents, teachers: pageTeachers, shifts: pageShifts, bookings: pageBookings, results: pageResults, settings: pageSettings, logs: pageLogs, staff: pageStaff })[S.page]();
   }
 
   // ---------- ホーム ----------
   function bookingTable(rows, o) {
     o = o || {};
     if (!rows.length) return '<div class="muted" style="padding:8px">' + esc(o.empty || '予約はありません') + '</div>';
-    return '<table class="tbl"><thead><tr><th>予約ID</th><th>日付</th><th>時間</th><th>生徒</th><th>先生</th><th>店舗</th><th>コース</th><th>状態</th><th>経路</th><th>注意</th><th>要望メモ</th>' + (o.actions ? '<th></th>' : '') + '</tr></thead><tbody>' +
+    return '<table class="tbl"><thead><tr>' + (o.select ? '<th><input type="checkbox" id="selall" title="すべて選ぶ"></th>' : '') + '<th>予約ID</th><th>日付</th><th>時間</th><th>生徒</th><th>先生</th><th>店舗</th><th>コース</th><th>状態</th><th>経路</th><th>注意</th><th>要望メモ</th>' + (o.actions ? '<th></th>' : '') + '</tr></thead><tbody>' +
       rows.map(function (b) {
-        return '<tr data-id="' + esc(b.id) + '" class="' + (b.state === '予約中' ? '' : 'dim') + '"><td class="nowrap">' + esc(b.id) + '</td><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td>' +
+        return '<tr data-id="' + esc(b.id) + '" class="' + (b.state === '予約中' ? '' : 'dim') + '">' + (o.select ? '<td>' + (b.state === '予約中' || b.state === '期限後欠席' ? '<input type="checkbox" class="sel" value="' + esc(b.id) + '">' : '') + '</td>' : '') + '<td class="nowrap">' + esc(b.id) + '</td><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td>' +
           '<td class="nowrap"><a href="#students?id=' + esc(b.studentId) + '">' + esc(b.studentName) + '</a></td><td class="nowrap">' + esc(b.teacherName) + '</td><td>' + esc(b.store) + '</td><td class="nowrap">' + esc(b.course) + '</td>' +
           '<td class="nowrap state-' + esc(b.state) + '">' + esc(b.state) + (b.toId ? '<span class="muted small">→' + esc(b.toId) + '</span>' : '') + '</td><td class="nowrap">' + esc(b.route) + '</td><td>' + tags(b.attention) + '</td><td class="small">' + esc(b.memo) + '</td>' +
           (o.actions ? '<td class="actions">' + o.actions(b) + '</td>' : '') + '</tr>';
@@ -155,16 +155,20 @@
   function pageHome() {
     var v = shell('<h2>ホーム <span class="sub">' + fmtD(today()) + '</span></h2><div class="loading">読み込み中…</div>');
     api('home').then(function (r) {
+      if (!v.isConnected) return;   // 別の画面に移ったあとに届いた応答は捨てる
       if (!r.ok) { v.innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
-      var sync = r.sync.pending ? '<div class="msg warn">カレンダーへの書き出しが <b>' + r.sync.pending + ' 件</b> 待ちです（2分おきに自動で再試行します）。' +
+      var sync = r.sync.pending ? '<div class="msg warn">カレンダーへの書き出しが <b>' + r.sync.pending + ' 件</b> 待ちです（2分おきに自動で再試行します）。 <button type="button" class="btn small sub" id="retry">今すぐ再試行</button>' +
         (r.sync.failing.length ? '<br>失敗が続いているもの：' + r.sync.failing.map(function (f) { return esc(f.bookingId) + '（' + esc(f.target) + '・' + f.attempts + '回）' + esc(f.error); }).join('／') : '') + '</div>' : '';
+      var runs = (r.jobRuns || []).length ? '<table class="tbl"><thead><tr><th>日付</th><th>開始</th><th>終了</th><th>結果</th></tr></thead><tbody>' + r.jobRuns.map(function (j) { return '<tr><td class="nowrap">' + fmtD(j.date) + '</td><td class="nowrap">' + fmtDT(j.startedAt) + '</td><td class="nowrap">' + (j.finishedAt ? fmtDT(j.finishedAt) : '<span class="tag yellow">実行中</span>') + '</td><td class="small">' + esc(j.result) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">まだ走っていません</div>';
       var outside = r.outsideCount ? '<div class="msg warn">先生の出勤時間の外に出ている予約が <b>' + r.outsideCount + ' 件</b> あります。<a href="#bookings">予約の画面</a>で「枠外」の印を確認してください。</div>' : '';
       var att = r.attention.length ? '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.attention.map(function (a) { return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="nowrap">' + esc(a.target) + '</td><td>' + esc(a.message) + '</td></tr>'; }).join('') + '</tbody></table>'
         : '<div class="muted">対応が要るものはありません</div>';
       v.innerHTML = '<h2>ホーム <span class="sub">' + fmtD(r.today) + '</span></h2>' + sync + outside +
         '<div class="card"><h3 style="margin-top:0">今日 ' + fmtD(r.today) + '（' + r.todayList.length + ' 件）</h3>' + bookingTable(r.todayList) + '</div>' +
         '<div class="card"><h3 style="margin-top:0">明日 ' + fmtD(r.tomorrow) + '（' + r.tomorrowList.length + ' 件）</h3>' + bookingTable(r.tomorrowList) + '</div>' +
-        '<div class="card"><h3 style="margin-top:0">朝の確認（対応が要るもの。30日分）</h3>' + att + '</div>';
+        '<div class="card"><h3 style="margin-top:0">朝の確認（対応が要るもの。30日分） <a class="btn ghost small" href="#logs">すべてのログ</a></h3>' + att + '</div>' +
+        '<div class="card"><h3 style="margin-top:0">日次処理の記録（リマインド・固定枠・月初の付与など。毎朝の送信時刻に自動で走ります）</h3>' + runs + '</div>';
+      if ($('#retry')) $('#retry').onclick = function () { busy($('#retry'), true); api('sync.retry').then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); pageHome(); }); };
     });
   }
 
@@ -175,11 +179,14 @@
       '<div class="toolbar"><input type="search" id="q" placeholder="氏名・フリガナ・電話番号・生徒ID" value="' + esc(q.q || '') + '" style="width:260px">' +
       '<select id="status"><option value="">在籍状況：すべて</option>' + opts(['在籍', '休会', '退会'], q.status || '') + '</select>' +
       '<select id="store"><option value="">店舗：すべて</option>' + opts(S.me.stores.map(function (s) { return s.name; }), q.store || '') + '</select>' +
-      '<button type="button" class="btn sub" id="search">検索</button><span class="grow"></span><button type="button" class="btn" id="new">＋ 新規登録</button></div><div id="list" class="loading">読み込み中…</div>');
+      '<button type="button" class="btn sub" id="search">検索</button><span class="grow"></span><button type="button" class="btn sub" id="xlsx">Excel に出す</button><button type="button" class="btn" id="new">＋ 新規登録</button></div><div id="list" class="loading">読み込み中…</div>');
+    var last = [];
     var load = function () {
       var p = { q: $('#q').value.trim(), status: $('#status').value, store: $('#store').value };
       api('students.list', p).then(function (r) {
+        if (!v.isConnected) return;
         if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+        last = r.students;
         $('#list').innerHTML = r.students.length ? '<table class="tbl"><thead><tr><th>生徒ID</th><th>氏名</th><th>フリガナ</th><th>電話番号</th><th>店舗</th><th>コース</th><th>在籍</th><th>残り／先使い</th><th>固定枠</th><th>LINE</th><th>印</th></tr></thead><tbody>' +
           r.students.map(function (s) {
             return '<tr class="click ' + (s.status === '在籍' ? '' : 'dim') + '" data-id="' + esc(s.id) + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(s.family + ' ' + s.given) + '</td><td class="nowrap">' + esc(s.kana) + '</td><td class="nowrap">' + esc(s.phone) + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.course) + '</td><td>' + esc(s.status) + '</td>' +
@@ -191,6 +198,11 @@
     $('#search').onclick = load; $('#q').onkeydown = function (e) { if (e.key === 'Enter') load(); };
     $('#status').onchange = load; $('#store').onchange = load;
     $('#new').onclick = function () { studentDialog('', load); };
+    $('#xlsx').onclick = function () {
+      var head = ['生徒ID', '姓', '名', 'フリガナ', '電話番号', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠_曜日', '固定枠_時間', '固定枠_先生', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
+      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.phone, s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), s.fixedWeekday, s.fixedStart, s.fixedTeacherId ? teacherName(s.fixedTeacherId) : '', s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
+      xlsx('ビヨンド_名簿_' + today() + '.xlsx', [{ name: '名簿', rows: [['出力日時', fmtNow()], []].concat([head], rows) }], '名簿', rows.length, '');
+    };
     load();
     if (q.id) studentDialog(q.id, load);
   }
@@ -282,14 +294,14 @@
     var v = shell('<h2>先生 <span class="sub">名前・担当店舗・対応コース・Google アカウント・カレンダー</span></h2>' +
       '<div class="toolbar"><span class="muted small">先生の写真は後の段で入れます（それまでは生徒の画面に頭文字の丸）</span><span class="grow"></span><button type="button" class="btn sub" id="cal">カレンダーを作成・共有（未作成の先生）</button><button type="button" class="btn" id="new">＋ 新しい先生</button></div><div id="list"></div>');
     var draw = function () {
-      $('#list').innerHTML = '<table class="tbl"><thead><tr><th>先生ID</th><th>名前</th><th>担当店舗</th><th>対応コース</th><th>Google アカウント</th><th>色</th><th>ひとこと</th><th>カレンダー</th><th>状態</th></tr></thead><tbody>' +
+      $('#list').innerHTML = '<table class="tbl"><thead><tr><th></th><th>先生ID</th><th>名前</th><th>担当店舗</th><th>対応コース</th><th>Google アカウント</th><th>色</th><th>ひとこと</th><th>カレンダー</th><th>状態</th></tr></thead><tbody>' +
         S.me.teachers.map(function (t) {
-          return '<tr class="click ' + (t.active ? '' : 'dim') + '" data-id="' + esc(t.id) + '"><td>' + esc(t.id) + '</td><td class="nowrap">' + esc(t.name) + '</td><td>' + esc(t.stores.join('、')) + '</td><td>' + esc(t.courses.join('、')) + '</td><td class="small">' + esc(t.googleAccount) + '</td><td>' + esc(t.color) + '</td><td class="small">' + esc(t.message) + '</td>' +
+          return '<tr class="click ' + (t.active ? '' : 'dim') + '" data-id="' + esc(t.id) + '"><td>' + thumb(t) + '</td><td>' + esc(t.id) + '</td><td class="nowrap">' + esc(t.name) + '</td><td>' + esc(t.stores.join('、')) + '</td><td>' + esc(t.courses.join('、')) + '</td><td class="small">' + esc(t.googleAccount) + '</td><td>' + esc(t.color) + '</td><td class="small">' + esc(t.message) + '</td>' +
             '<td>' + (t.hasCalendar ? '作成済' : '<span class="tag yellow">未作成</span>') + '</td><td>' + (t.active ? '有効' : '無効') + '</td></tr>';
         }).join('') + '</tbody></table>';
       $$('tr.click', $('#list')).forEach(function (tr) { tr.onclick = function () { teacherDialog(tr.dataset.id, reload); }; });
     };
-    var reload = function () { api('me').then(function (r) { if (r.ok) { S.me = r; draw(); } }); };
+    var reload = function () { api('me').then(function (r) { if (r.ok) { S.me = r; draw(); loadPhotos(draw); } }); };
     $('#new').onclick = function () { teacherDialog('', reload); };
     $('#cal').onclick = function () {
       var btn = $('#cal');
@@ -298,8 +310,10 @@
         api('teachers.calendars', {}).then(function (r) { busy(btn, false); if (!r.ok) { toast(r.error, 'err'); return; } toast(r.message + (r.notes.length ? '\n' + r.notes.join('\n') : '')); reload(); });
       });
     };
-    draw();
+    draw(); loadPhotos(draw);
   }
+  function thumb(t) { var u = S.photos && S.photos[t.id]; return u ? '<img class="thumb" src="' + esc(u) + '" alt="">' : '<span class="thumb">' + esc(String(t.name || '?').charAt(0)) + '</span>'; }
+  function loadPhotos(then) { api('teachers.photos').then(function (r) { if (r.ok) { S.photos = r.photos || {}; if (then) then(); } }); }
   function teacherDialog(id, onDone) {
     var me = S.me, t = me.teachers.find(function (x) { return x.id === id; }) || { stores: [], courses: [], active: true, color: '' };
     openModal({ title: id ? '先生の編集　' + t.name : '新しい先生', sticky: true,
@@ -307,9 +321,17 @@
         '<div class="field full"><label>担当店舗</label>' + checks('stores', me.stores.map(function (s) { return s.name; }), t.stores) + '</div><div class="field full"><label>対応コース</label>' + checks('courses', me.courses.map(function (c) { return c.name; }), t.courses) + '</div>' +
         '<div class="field"><label>Google アカウント（カレンダーの共有先）</label><input type="email" name="googleAccount" value="' + esc(t.googleAccount) + '"><div class="hint">空欄なら共有しない</div></div><div class="field"><label>状態</label><select name="active"><option value="true"' + (t.active ? ' selected' : '') + '>有効</option><option value="false"' + (!t.active ? ' selected' : '') + '>無効</option></select><div class="hint">無効にすると予約画面・提案から外れます。カレンダーと過去の予約はそのまま</div></div>' +
         '<div class="field full"><label>ひとこと（生徒の先生選択画面に出ます）</label><input type="text" name="message" value="' + esc(t.message) + '"></div></form>' +
-        (id ? '<div class="readonly-box" style="margin-top:10px"><span>先生ID <b>' + esc(t.id) + '</b></span><span>カレンダー <b>' + (t.hasCalendar ? '作成済' : '未作成') + '</b></span></div>' : ''),
+        (id ? '<div class="readonly-box" style="margin-top:10px"><span>先生ID <b>' + esc(t.id) + '</b></span><span>カレンダー <b>' + (t.hasCalendar ? '作成済' : '未作成') + '</b></span></div>' +
+          '<h3>写真（生徒の先生選択画面に出ます）</h3><div class="photo-box"><div id="pv">' + thumb(t) + '</div><div><input type="file" id="pfile" accept="image/*"><div class="hint">選ぶと長辺 300px に縮めて登録します。正方形に近い写真がきれいに出ます</div>' + (S.photos && S.photos[t.id] ? '<button type="button" class="btn small danger" id="pdel" style="margin-top:6px">写真を消す</button>' : '') + '</div></div>' : ''),
       footer: '<button type="button" class="btn sub close">閉じる</button><button type="button" class="btn save">保存</button>',
       onOpen: function (bg, close) {
+        if ($('#pfile', bg)) $('#pfile', bg).onchange = function () {
+          var f = $('#pfile', bg).files[0]; if (!f) return;
+          shrinkImage(f, 300).then(function (dataUrl) { return api('teachers.photo', { teacherId: id, dataUrl: dataUrl }); }).then(function (r) {
+            if (!r.ok) { showMsg(bg, r.error, 'err'); return; } toast(r.message); S.photos = S.photos || {}; S.photos[id] = r.url; $('#pv', bg).innerHTML = thumb(t); if (onDone) onDone();
+          }).catch(function (e) { showMsg(bg, '画像を読めませんでした（' + e.message + '）', 'err'); });
+        };
+        if ($('#pdel', bg)) $('#pdel', bg).onclick = function () { api('teachers.photo', { teacherId: id, remove: true }).then(function (r) { if (!r.ok) { showMsg(bg, r.error, 'err'); return; } toast(r.message); delete S.photos[id]; $('#pv', bg).innerHTML = thumb(t); $('#pdel', bg).remove(); if (onDone) onDone(); }); };
         $('.save', bg).onclick = function () {
           var d = formData($('#tf', bg)); if (id) d.teacherId = id; d.active = d.active === 'true';
           busy($('.save', bg), true);
@@ -323,13 +345,14 @@
     var month = /^\d{4}-\d{2}$/.test(S.query.month || '') ? S.query.month : today().substring(0, 7);
     var v = shell('<h2>シフト <span class="sub">基本パターン（毎週）＋休み・臨時出勤（日付指定）。マスを押すと、その日の休み・臨時出勤を入れられます</span></h2>' +
       '<div class="toolbar"><button type="button" class="btn sub small" id="prev">‹ 前の月</button><b id="mlabel" style="font-size:16px"></b><button type="button" class="btn sub small" id="next">次の月 ›</button><span class="grow"></span>' +
-      '<button type="button" class="btn sub" id="regen">枠を作り直す（復旧用）</button><button type="button" class="btn" id="newbase">＋ 基本パターンを足す</button></div>' +
+      '<button type="button" class="btn sub" id="xlsx">Excel に出す</button><button type="button" class="btn sub" id="regen">枠を作り直す（復旧用）</button><button type="button" class="btn" id="newbase">＋ 基本パターンを足す</button></div>' +
       '<div class="legend"><span><i style="background:#fdecea"></i>休みが入っている日</span><span><i style="background:#e6f4ea"></i>臨時出勤の日</span><span><span class="bk">2</span> 予約中の件数</span></div><div id="grid" class="loading">読み込み中…</div><div id="below"></div>');
     var go = function (m) { location.hash = '#shifts?month=' + m; };
     $('#prev').onclick = function () { go(addMonths(month, -1)); }; $('#next').onclick = function () { go(addMonths(month, 1)); };
     $('#mlabel').textContent = month.substring(0, 4) + '年' + (+month.substring(5)) + '月';
     var load = function () {
       api('shifts.month', { month: month }).then(function (r) {
+        if (!v.isConnected) return;
         if (!r.ok) { $('#grid').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
         var exByKey = {}; r.exceptions.forEach(function (e) { var k = e.teacherId + '|' + e.date; (exByKey[k] = exByKey[k] || []).push(e); });
         var head = '<tr><th class="tname">先生</th>' + r.days.map(function (d) { return '<th class="' + (d.weekday === '土' ? 'sat' : d.weekday === '日' ? 'sun' : '') + '">' + (+d.ymd.substring(8)) + '<br>' + d.weekday + '</th>'; }).join('') + '</tr>';
@@ -350,7 +373,13 @@
           return '<tr><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(teacherName(s.teacherId)) + '</td><td>' + esc(s.kind) + '</td><td class="nowrap">' + fmtD(s.date) + '</td><td class="nowrap">' + (s.start ? esc(s.start + '〜' + s.end) : '終日') + '</td><td>' + esc(s.store) + '</td><td class="small">' + esc(s.note) + '</td>' +
             '<td class="actions"><button type="button" class="btn small sub edit" data-id="' + esc(s.id) + '">編集</button><button type="button" class="btn small danger del" data-id="' + esc(s.id) + '">削除</button></td></tr>';
         }).join('') + '</tbody></table>' : '<div class="muted" style="padding:8px">この月の休み・臨時出勤はありません</div>';
-        var outside = r.outside.length ? '<div class="msg warn">先生の出勤時間の外に出ている予約が ' + r.outside.length + ' 件あります（予約は残っています。振替の連絡をお願いします）</div>' + bookingTable(r.outside) : '';
+        var outside = r.outside.length ? '<div class="msg warn">先生の出勤時間の外に出ている予約が ' + r.outside.length + ' 件あります（予約は残っています。振替の連絡をお願いします） <a class="btn small sub" href="#bookings?from=' + r.outside[0].date + '&to=' + r.outside[r.outside.length - 1].date + '&state=予約中&select=' + r.outside.map(function (b) { return b.id; }).join(',') + '">予約の画面で選んだ状態で開く</a></div>' + bookingTable(r.outside) : '';
+        $('#xlsx').onclick = function () {
+          var base = [['出力日時', fmtNow()], [], ['ID', '先生', '曜日', '開始', '終了', '店舗', '適用開始', '適用終了', '備考']].concat(r.base.map(function (x) { return [x.id, teacherName(x.teacherId), x.weekday, x.start, x.end, x.store, x.validFrom, x.validTo, x.note]; }));
+          var exc = [['対象月', month], [], ['ID', '先生', '種別', '日付', '開始', '終了', '店舗', '備考']].concat(r.exceptions.map(function (x) { return [x.id, teacherName(x.teacherId), x.kind, x.date, x.start || '終日', x.end, x.store, x.note]; }));
+          var grid = [['先生'].concat(r.days.map(function (d) { return (+d.ymd.substring(8)) + '（' + d.weekday + '）'; }))].concat(r.teachers.map(function (t) { return [t.name].concat(r.days.map(function (d) { return (r.cells[t.id + '|' + d.ymd] || []).map(function (iv) { return hm(iv.start) + '-' + hm(iv.end); }).join(' '); })); }));
+          xlsx('ビヨンド_シフト_' + month + '.xlsx', [{ name: '一面表示', rows: [['対象月', month], ['出力日時', fmtNow()], []].concat(grid) }, { name: '基本パターン', rows: base }, { name: '休み・臨時出勤', rows: exc }], 'シフト', r.base.length + r.exceptions.length, month);
+        };
         $('#below').innerHTML = outside + '<div class="grid2"><div class="card"><h3 style="margin-top:0">基本パターン（毎週）</h3>' + base + '</div><div class="card"><h3 style="margin-top:0">この月の休み・臨時出勤</h3>' + exc + '</div></div>';
         var all = r.base.concat(r.exceptions);
         $$('.edit', $('#below')).forEach(function (b) { b.onclick = function () { shiftDialog(all.find(function (s) { return s.id === b.dataset.id; }), load); }; });
@@ -424,19 +453,48 @@
       '<select id="store"><option value="">店舗：すべて</option>' + opts(me.stores.map(function (s) { return s.name; }), q.store || '') + '</select>' +
       '<select id="state"><option value="">状態：すべて</option>' + opts(me.lists.states, q.state === undefined ? '予約中' : q.state) + '</select>' +
       (q.studentId ? '<span class="tag blue">生徒 ' + esc(q.studentId) + ' <a href="#bookings" style="margin-left:4px">×</a></span>' : '') +
-      '<button type="button" class="btn sub" id="search">表示</button><span class="grow"></span><button type="button" class="btn" id="add">＋ 予約を追加</button></div><div id="list" class="loading">読み込み中…</div>');
+      '<button type="button" class="btn sub" id="search">表示</button><span class="grow"></span><button type="button" class="btn sub" id="xlsx">Excel に出す</button><button type="button" class="btn" id="add">＋ 予約を追加</button></div>' +
+      '<div id="bulkbar" class="row" style="display:none;margin-bottom:8px"><b><span id="selcount">0</span> 件を選択中</b><button type="button" class="btn small sub" id="bulk-cancel">まとめてキャンセル</button><button type="button" class="btn small sub" id="bulk-close">まとめて休講</button><span class="muted small">（キャンセルは期限を過ぎたものを外します。休講は期限を見ません）</span></div><div id="list" class="loading">読み込み中…</div>');
+    var last = [], preselect = (q.select || '').split(',').filter(Boolean);
+    var selected = function () { return $$('.sel:checked', $('#list')).map(function (c) { return c.value; }); };
+    var syncBar = function () { var n = selected().length; $('#bulkbar').style.display = n ? '' : 'none'; $('#selcount').textContent = n; };
     var load = function () {
       var p = { from: $('#from').value, to: $('#to').value, teacherId: $('#teacher').value, store: $('#store').value, state: $('#state').value, studentId: q.studentId || '' };
       api('bookings.list', p).then(function (r) {
+        if (!v.isConnected) return;
         if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
-        $('#list').innerHTML = bookingTable(r.bookings, { empty: '該当する予約はありません', actions: function (b) {
+        last = r.bookings;
+        $('#list').innerHTML = bookingTable(r.bookings, { empty: '該当する予約はありません', select: true, actions: function (b) {
           var a = [];
           if (b.state === '予約中') a.push(['move', '日時変更'], ['cancel', 'キャンセル'], ['absent', '期限後欠席'], ['close', '休講']);
           if (b.state === '期限後欠席') { if (!b.refundedAt) a.push(['refund', '回数を戻す']); a.push(['close', '休講']); }
+          if (b.attention.indexOf('同期待ち') >= 0) a.push(['requeue', '書き出し直す']);
           return a.map(function (x) { return '<button type="button" class="btn small sub act" data-act="' + x[0] + '" data-id="' + esc(b.id) + '">' + x[1] + '</button>'; }).join('');
         } }) + '<div class="muted small" style="padding:6px">' + r.bookings.length + ' 件</div>';
         $$('.act', $('#list')).forEach(function (btn) { btn.onclick = function () { bookingAction(btn.dataset.act, r.bookings.find(function (b) { return b.id === btn.dataset.id; }), load); }; });
+        $$('.sel', $('#list')).forEach(function (c) { if (preselect.indexOf(c.value) >= 0) c.checked = true; c.onchange = syncBar; });
+        preselect = [];
+        if ($('#selall')) $('#selall').onchange = function () { $$('.sel', $('#list')).forEach(function (c) { c.checked = $('#selall').checked; }); syncBar(); };
+        syncBar();
       });
+    };
+    var bulk = function (act) {
+      var ids = selected(); if (!ids.length) return;
+      var names = ids.map(function (id) { var b = last.find(function (x) { return x.id === id; }); return b ? b.id + '　' + fmtD(b.date) + ' ' + hm(b.start) + ' ' + b.studentName + '／' + b.teacherName : id; });
+      var title = act === 'cancel' ? 'まとめてキャンセル' : 'まとめて休講';
+      confirmBox(title, ids.length + ' 件を' + (act === 'cancel' ? 'キャンセルします（回数は戻ります。期限を過ぎているものは外します）' : '休講にします（回数は戻ります。生徒さんへの連絡は LINE でお願いします）') + '：\n\n' + names.join('\n'), title, true).then(function (yes) {
+        if (!yes) return;
+        api('bookings.bulk', { act: act, bookingIds: ids }).then(function (r) {
+          if (!r.ok) { toast(r.error, 'err'); return; }
+          openModal({ title: title + '：結果（' + r.message + '）', body: '<table class="tbl"><thead><tr><th>予約ID</th><th>結果</th></tr></thead><tbody>' + r.results.map(function (x) { return '<tr><td class="nowrap">' + esc(x.id) + '</td><td class="' + (x.ok ? 'state-予約中' : x.skipped ? 'state-休講' : 'state-期限後欠席') + '">' + (x.ok ? '済：' : x.skipped ? '外した：' : '失敗：') + esc(x.message) + '</td></tr>'; }).join('') + '</tbody></table>' });
+          load();
+        });
+      });
+    };
+    $('#bulk-cancel').onclick = function () { bulk('cancel'); }; $('#bulk-close').onclick = function () { bulk('closeSchool'); };
+    $('#xlsx').onclick = function () {
+      var rows = last.map(function (b) { return [b.id, b.date, b.weekday, hm(b.start), hm(b.end), b.studentName, b.teacherName, b.store, b.course, b.state, b.route, b.attention.join('／'), b.memo, b.refundReason, b.operator]; });
+      xlsx('ビヨンド_予約一覧_' + $('#from').value + '_' + $('#to').value + '.xlsx', [{ name: '予約一覧', rows: [['期間', $('#from').value + '〜' + $('#to').value, '出力日時', fmtNow()], [], ['予約ID', '日付', '曜日', '開始', '終了', '生徒', '先生', '店舗', 'コース', '状態', '経路', '注意', '要望メモ', '回数戻し理由', '操作者']].concat(rows) }], '予約一覧', rows.length, $('#from').value + '〜' + $('#to').value);
     };
     $('#search').onclick = load; ['from', 'to', 'teacher', 'store', 'state'].forEach(function (id) { $('#' + id).onchange = load; });
     $('#add').onclick = function () { bookingForm(null, load); };
@@ -446,6 +504,7 @@
   function bookingAction(act, b, onDone) {
     var done = function (r) { if (!r.ok) { toast(r.error, 'err'); return false; } toast(r.message); onDone(); return true; };
     if (act === 'move') { bookingForm(b, onDone); return; }
+    if (act === 'requeue') { api('sync.requeue', { bookingId: b.id }).then(done); return; }
     if (act === 'cancel') {
       confirmBox('予約をキャンセル', describe(b) + '\n\nキャンセルします。回数は1回戻ります。よろしいですか？\n（変更期限を過ぎているときはキャンセルできず、「期限後欠席」を案内します）', 'キャンセルする', true).then(function (yes) {
         if (!yes) return;
@@ -512,12 +571,115 @@
       } });
   }
 
+  // ---------- 実績一覧（仕様書 12章）と Excel（設計書 12章：まとめ＋先生ごとのシート） ----------
+  function pageResults() {
+    var month = /^\d{4}-\d{2}$/.test(S.query.month || '') ? S.query.month : today().substring(0, 7);
+    var v = shell('<h2>実績 <span class="sub">先生ごとの件数と明細。実施＝予約中で今日より前。休講は学校都合（当日欠席にも期限内キャンセルにも数えません）</span></h2>' +
+      '<div class="toolbar"><button type="button" class="btn sub small" id="prev">‹ 前の月</button><b id="mlabel" style="font-size:16px">' + month.substring(0, 4) + '年' + (+month.substring(5)) + '月</b><button type="button" class="btn sub small" id="next">次の月 ›</button><span class="grow"></span><button type="button" class="btn" id="xlsx">Excel に出す（まとめ＋先生ごと）</button></div><div id="body" class="loading">読み込み中…</div>');
+    $('#prev').onclick = function () { location.hash = '#results?month=' + addMonths(month, -1); }; $('#next').onclick = function () { location.hash = '#results?month=' + addMonths(month, 1); };
+    api('results.month', { month: month }).then(function (r) {
+      if (!v.isConnected) return;
+      if (!r.ok) { $('#body').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+      var kc = { '実施': 'green', '期限後欠席': 'red', '期限内キャンセル': '', '休講': 'yellow', '予定': 'blue' };
+      $('#body').innerHTML = '<div class="card"><h3 style="margin-top:0">先生別の件数</h3><table class="tbl"><thead><tr><th>先生</th><th>実施</th><th>期限後欠席（当日欠席）</th><th>うち回数戻し</th><th>期限内キャンセル</th><th>休講</th><th>予定（今日以降）</th></tr></thead><tbody>' +
+        r.summary.map(function (x) { return '<tr' + (x.active ? '' : ' class="dim"') + '><td class="nowrap">' + esc(x.teacherName) + '</td><td class="num">' + x.done + '</td><td class="num">' + x.absent + '</td><td class="num">' + x.refunded + '</td><td class="num">' + x.cancelled + '</td><td class="num">' + x.closed + '</td><td class="num muted">' + x.planned + '</td></tr>'; }).join('') + '</tbody></table>' +
+        '<div class="muted small" style="margin-top:6px">先生には、この画面を直接見せず、先生ごとの件数を伝えます（ほかの先生の生徒名が載るため）。Excel の先生ごとのシートは、その1枚だけを切り出して渡せます。金額は出しません。</div></div>' +
+        '<div class="card"><h3 style="margin-top:0">明細（日付順）</h3>' + (r.detail.length ? '<table class="tbl"><thead><tr><th>日付</th><th>時間</th><th>先生</th><th>生徒</th><th>コース</th><th>区分</th><th>回数戻し</th><th>予約ID</th></tr></thead><tbody>' +
+        r.detail.map(function (b) { return '<tr class="' + (b.kind === '予定' ? 'dim' : '') + '"><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td><td class="nowrap">' + esc(b.teacherName) + '</td><td class="nowrap">' + esc(b.studentName) + '</td><td class="nowrap">' + esc(b.course) + '</td><td><span class="tag ' + (kc[b.kind] || '') + '">' + esc(b.kind) + '</span></td><td class="small">' + (b.refundedAt ? '戻した：' + esc(b.refundReason) : '') + '</td><td class="small">' + esc(b.id) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">この月の予約はありません</div>') + '</div>';
+      $('#xlsx').onclick = function () {
+        var at = fmtNow();
+        var summary = [['対象月', month], ['出力日時', at], ['実施＝予約中で今日より前。期限後欠席＝当日欠席（50%）。休講＝学校都合（数えない）。金額は出しません'], [], ['先生', '実施', '期限後欠席（当日欠席）', 'うち回数戻し', '期限内キャンセル', '休講', '予定（今日以降）']]
+          .concat(r.summary.map(function (x) { return [x.teacherName, x.done, x.absent, x.refunded, x.cancelled, x.closed, x.planned]; }));
+        var sheets = [{ name: 'まとめ', rows: summary }];
+        r.summary.forEach(function (x) {
+          var mine = r.detail.filter(function (b) { return b.teacherId === x.teacherId; });
+          sheets.push({ name: x.teacherName, rows: [['先生', x.teacherName, '対象月', month, '出力日時', at], ['実施', x.done, '期限後欠席', x.absent, 'うち回数戻し', x.refunded, '期限内キャンセル', x.cancelled, '休講', x.closed], [], ['日付', '曜日', '開始', '終了', '生徒', 'コース', '区分', '回数戻し理由', '予約ID']]
+            .concat(mine.map(function (b) { return [b.date, b.weekday, hm(b.start), hm(b.end), b.studentName, b.course, b.kind, b.refundedAt ? b.refundReason : '', b.id]; })) });
+        });
+        xlsx('ビヨンド_実績_' + month + '.xlsx', sheets, '実績一覧', r.detail.length, month);
+      };
+    });
+  }
+
+  // ---------- ログ（処理ログ・操作ログ。⑥） ----------
+  function pageLogs() {
+    var kind = S.query.kind === 'audit' ? 'audit' : 'proc', att = S.query.attention === '1';
+    var v = shell('<h2>ログ <span class="sub">処理ログ（自動の処理の記録）と操作ログ（だれが何をしたか）。ID は名簿と突き合わせて名前を添えます</span></h2>' +
+      '<div class="tabs"><button type="button" class="' + (kind === 'proc' ? 'on' : '') + '" id="tab-proc">処理ログ</button><button type="button" class="' + (kind === 'audit' ? 'on' : '') + '" id="tab-audit">操作ログ</button>' +
+      (kind === 'proc' ? '<label style="margin-left:12px"><input type="checkbox" id="att"' + (att ? ' checked' : '') + '> 対応が要るものだけ</label>' : '') + '</div><div id="list" class="loading">読み込み中…</div>');
+    $('#tab-proc').onclick = function () { location.hash = '#logs?kind=proc'; }; $('#tab-audit').onclick = function () { location.hash = '#logs?kind=audit'; };
+    if ($('#att')) $('#att').onchange = function () { location.hash = '#logs?kind=proc' + ($('#att').checked ? '&attention=1' : ''); };
+    api('logs.list', { kind: kind, limit: 300, attention: att ? '1' : '' }).then(function (r) {
+      if (!v.isConnected) return;
+      if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+      var nm = function (id) { var t = r.names || { students: {}, bookings: {} }; return String(id || '').split(/[,→]/).map(function (x) { x = x.trim(); var n = t.bookings[x] || t.students[x]; return n ? esc(x) + ' <span class="muted small">' + esc(n) + '</span>' : esc(x); }).join('<span class="muted">, </span>'); };
+      if (kind === 'audit') {
+        $('#list').innerHTML = '<table class="tbl"><thead><tr><th>日時</th><th>だれが</th><th>操作</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.rows.map(function (a) {
+          var who = a.actorType === 'student' ? '生徒 ' + nm(a.actor) : a.actorType === 'system' ? '自動（' + esc(a.actor) + '）' : esc(a.actor);
+          return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap small">' + who + '</td><td class="nowrap">' + esc(a.action) + '</td><td class="small">' + esc(a.targetType) + ' ' + nm(a.targetId) + '</td><td class="small">' + esc(Object.keys(a.detail || {}).map(function (k) { return k + '：' + (Array.isArray(a.detail[k]) ? a.detail[k].join('、') : JSON.stringify(a.detail[k]).replace(/^"|"$/g, '')); }).join('　')) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      } else {
+        $('#list').innerHTML = '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th><th></th></tr></thead><tbody>' + r.rows.map(function (a) {
+          return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="small">' + nm(a.target) + '</td><td class="small">' + esc(a.message).replace(/S\d{4}/g, function (m) { return nm(m); }) + '</td><td>' + (a.attention ? '<span class="tag red">要対応</span>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      }
+    });
+  }
+
+  // ---------- スタッフ（許可リスト。登録は admin だけ） ----------
+  function pageStaff() {
+    var me = S.me, isAdmin = me.staff.role === 'admin';
+    var v = shell('<h2>スタッフ <span class="sub">運営の画面にログインできる Google アカウント。登録・変更は管理者だけ</span></h2><div id="list" class="loading">読み込み中…</div>' +
+      (isAdmin ? '<div class="card"><h3 style="margin-top:0">登録・変更</h3><form class="form" id="sf"><div class="field"><label>Google アカウント（メール）</label><input type="email" name="email"></div><div class="field"><label>名前</label><input type="text" name="name"></div><div class="field"><label>役割</label><select name="role"><option value="staff">スタッフ</option><option value="admin">管理者（スタッフの登録ができる）</option></select></div><div class="field"><label>状態</label><select name="active"><option value="true">有効</option><option value="false">無効（ログインできない）</option></select></div></form><button type="button" class="btn" id="save">保存</button><div class="muted small" style="margin-top:6px">同じメールを入れると上書きです。無効にしたアカウントは、ログインできても「登録されていません」になります。</div></div>' : '<div class="muted">あなたは「スタッフ」の役割です。登録・変更は管理者にお願いしてください。</div>'));
+    var load = function () {
+      api('staff.list').then(function (r) {
+        if (!v.isConnected) return;
+        if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+        $('#list').innerHTML = '<table class="tbl"><thead><tr><th>メール</th><th>名前</th><th>役割</th><th>状態</th><th>登録</th></tr></thead><tbody>' + r.staff.map(function (x) { return '<tr class="' + (x.active ? (isAdmin ? 'click' : '') : 'dim') + '" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '" data-role="' + esc(x.role) + '" data-active="' + x.active + '"><td>' + esc(x.email) + (x.email === me.staff.email ? ' <span class="tag blue">あなた</span>' : '') + '</td><td>' + esc(x.name) + '</td><td>' + (x.role === 'admin' ? '管理者' : 'スタッフ') + '</td><td>' + (x.active ? '有効' : '無効') + '</td><td class="nowrap small">' + fmtDT(x.createdAt) + '</td></tr>'; }).join('') + '</tbody></table>';
+        if (isAdmin) $$('tr[data-email]', $('#list')).forEach(function (tr) { tr.onclick = function () { var f = $('#sf'); f.email.value = tr.dataset.email; f.name.value = tr.dataset.name; f.role.value = tr.dataset.role; f.active.value = tr.dataset.active; }; });
+      });
+    };
+    if (isAdmin) $('#save').onclick = function () { var d = formData($('#sf')); d.active = d.active === 'true'; busy($('#save'), true); api('staff.save', d).then(function (r) { busy($('#save'), false); toast(r.ok ? r.message : r.error, r.ok ? '' : 'err'); if (r.ok) load(); }); };
+    load();
+  }
+
+  // ---------- Excel（ブラウザで組み立てる。設計書 8章）と写真の縮小 ----------
+  function fmtNow() { var d = new Date(); return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+  function xlsx(filename, sheets, logKind, count, note) {
+    if (!window.XLSX) { toast('Excel の部品（SheetJS）が読み込めていません。ページを開き直してください', 'err'); return; }
+    var wb = XLSX.utils.book_new(), used = {};
+    sheets.forEach(function (sh) {
+      var ws = XLSX.utils.aoa_to_sheet(sh.rows);
+      var widths = []; sh.rows.forEach(function (r) { r.forEach(function (c, i) { var l = String(c === undefined || c === null ? '' : c).replace(/[^\x01-\x7E]/g, 'xx').length; if (!widths[i] || l > widths[i]) widths[i] = l; }); });
+      ws['!cols'] = widths.map(function (w) { return { wch: Math.min(48, Math.max(6, w + 2)) }; });
+      var name = String(sh.name || 'Sheet').replace(/[\\\/\?\*\[\]:]/g, '_').slice(0, 31) || 'Sheet'; var base = name, k = 2; while (used[name]) { name = (base.slice(0, 28) + '(' + k + ')'); k++; } used[name] = true;
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    XLSX.writeFile(wb, filename);
+    api('export.log', { kind: logKind, count: count, note: note || '' });
+    toast(filename + ' を出しました');
+  }
+  function shrinkImage(file, max) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, r = Math.min(1, max / Math.max(w, h));
+        var c = document.createElement('canvas'); c.width = Math.round(w * r); c.height = Math.round(h * r);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('画像として開けません')); };
+      img.src = url;
+    });
+  }
+
   // ---------- 設定 ----------
   function pageSettings() {
     var me = S.me;
     var v = shell('<h2>設定 <span class="sub">項目の値を変えると、すぐに効きます。キー（項目名）は変えられません</span></h2><div id="items" class="loading">読み込み中…</div><div class="grid2"><div class="card" id="courses"></div><div class="card" id="stores"></div></div>');
     var loadItems = function () {
       api('settings.list').then(function (r) {
+        if (!v.isConnected) return;
         if (!r.ok) { $('#items').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
         $('#items').innerHTML = '<div class="card"><table class="tbl"><thead><tr><th>項目</th><th style="width:320px">値</th><th>説明</th><th></th></tr></thead><tbody>' + r.settings.map(function (s) {
           var input = s.kind === 'onoff' ? '<select data-key="' + esc(s.key) + '"><option' + (s.value === 'ON' ? ' selected' : '') + '>ON</option><option' + (s.value === 'OFF' ? ' selected' : '') + '>OFF</option></select>'

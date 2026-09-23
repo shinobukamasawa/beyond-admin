@@ -4,8 +4,8 @@
 
 | ファイル | 内容 |
 |---|---|
-| index.html | 入れ物。supabase-js（CDN。Google ログインとセッションの保持にだけ使う）と app.js を読む |
-| app.js | 全画面（ログイン、ホーム、生徒、先生、シフト、予約、設定） |
+| index.html | 入れ物。supabase-js（CDN。Google ログインとセッションの保持にだけ使う）、SheetJS（CDN。Excel の組み立て）、app.js を読む |
+| app.js | 全画面（ログイン、ホーム、生徒、先生〔写真〕、シフト、予約〔まとめて実行〕、実績〔Excel〕、設定、ログ、スタッフ） |
 | style.css | 見た目（PC 幅） |
 | config.js | Supabase の URL・anon キー・API の URL（公開されてよい値だけ。anon キーは公開用で、データ API は閉じてある） |
 

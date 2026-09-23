@@ -116,3 +116,11 @@ table.tbl td.actions .btn + .btn { margin-left: 4px; }
 .login .note { color: var(--muted); font-size: 13px; margin: 14px 0 20px; }
 .avail { background: #f7f9fb; border-radius: 8px; padding: 8px 10px; font-size: 13px; min-height: 40px; }
 .avail ul { margin: 4px 0 0 18px; padding: 0; }
+
+.thumb { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--blue); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; vertical-align: middle; }
+.photo-box { display: flex; gap: 14px; align-items: center; }
+.photo-box img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 1px solid var(--line); }
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.tabs button { padding: 6px 14px; border: 1px solid var(--line); background: #fff; border-radius: 8px; cursor: pointer; }
+.tabs button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+#bulkbar { background: var(--blue-light); border-radius: 8px; padding: 4px 10px; }
