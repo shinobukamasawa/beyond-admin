@@ -677,20 +677,32 @@
   // ---------- 設定 ----------
   function pageSettings() {
     var me = S.me;
-    var v = shell('<h2>設定 <span class="sub">項目の値を変えると、すぐに効きます。キー（項目名）は変えられません</span></h2><div id="items" class="loading">読み込み中…</div><div class="grid2"><div class="card" id="courses"></div><div class="card" id="stores"></div></div>');
+    var v = shell('<h2>設定 <span class="sub">上の段はすぐに効きます。下の段は次の月の1日から効きます（すでに入っている予約は変わりません）。項目名は変えられません</span></h2><div id="items" class="loading">読み込み中…</div><div class="grid2"><div class="card" id="courses"></div><div class="card" id="stores"></div></div>');
     var loadItems = function () {
       api('settings.list').then(function (r) {
         if (!v.isConnected) return;
         if (!r.ok) { $('#items').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
-        $('#items').innerHTML = '<div class="card"><table class="tbl"><thead><tr><th>項目</th><th style="width:320px">値</th><th>説明</th><th></th></tr></thead><tbody>' + r.settings.map(function (s) {
+        var fromLabel = r.nextFromLabel;
+        var pendingLabel = function (s) { return s.pendingValue === null || s.pendingValue === undefined ? '' : '<div class="msg warn small" style="margin-top:4px">' + esc((Number(String(s.pendingFrom || '').substring(5)) || '') + '月1日から「' + (s.pendingValue === '' ? '空欄' : s.pendingValue) + '」になります') + ' <button type="button" class="btn small sub cancelp" data-key="' + esc(s.key) + '">取り消す</button></div>'; };
+        var row = function (s) {
           var input = s.kind === 'onoff' ? '<select data-key="' + esc(s.key) + '"><option' + (s.value === 'ON' ? ' selected' : '') + '>ON</option><option' + (s.value === 'OFF' ? ' selected' : '') + '>OFF</option></select>'
             : s.kind === 'text' ? '<textarea data-key="' + esc(s.key) + '" style="width:100%;min-height:56px">' + esc(s.value) + '</textarea>'
             : '<input type="text" data-key="' + esc(s.key) + '" value="' + esc(s.value) + '" style="width:120px">';
-          return '<tr><td class="nowrap">' + esc(s.key) + '</td><td>' + input + '</td><td class="small muted">' + esc(s.note) + '</td><td class="actions"><button type="button" class="btn small sub save" data-key="' + esc(s.key) + '">保存</button></td></tr>';
-        }).join('') + '</tbody></table></div>';
+          return '<tr><td class="nowrap">' + esc(s.key) + '</td><td>' + input + pendingLabel(s) + '</td><td class="small muted">' + esc(s.note) + (s.effect ? '<div style="margin-top:4px">' + esc(s.effect) + '</div>' : '') + '</td><td class="actions"><button type="button" class="btn small sub save" data-key="' + esc(s.key) + '" data-tier="' + s.tier + '">保存</button></td></tr>';
+        };
+        var table = function (title, list, note) { return '<div class="card"><h3 style="margin-top:0">' + esc(title) + '</h3>' + (note ? '<div class="muted small" style="margin-bottom:6px">' + esc(note) + '</div>' : '') + '<table class="tbl"><thead><tr><th>項目</th><th style="width:320px">値</th><th>説明</th><th></th></tr></thead><tbody>' + list.map(row).join('') + '</tbody></table></div>'; };
+        $('#items').innerHTML = table('すぐに効く設定', r.settings.filter(function (s) { return s.tier !== 2; }), '文面や送り方の設定。保存するとその場で効きます。') +
+          table('次の月の1日から効く設定', r.settings.filter(function (s) { return s.tier === 2; }), '受付の決まり。保存すると「' + fromLabel + 'から」の予約になり、それまでは今の値のままです。すでに入っている予約は変わりません（振替・キャンセルの期限は、予約を入れた時点のものが予約ごとに残ります）。');
         $$('.save', $('#items')).forEach(function (btn) { btn.onclick = function () {
           var el = $('[data-key="' + btn.dataset.key.replace(/"/g, '\\"') + '"]', $('#items'));
-          busy(btn, true); api('settings.save', { key: btn.dataset.key, value: el.value }).then(function (r) { busy(btn, false); toast(r.ok ? r.message : r.error, r.ok ? '' : 'err'); });
+          var go = function () { busy(btn, true); api('settings.save', { key: btn.dataset.key, value: el.value }).then(function (r) { busy(btn, false); toast(r.ok ? r.message : r.error, r.ok ? '' : 'err'); if (r.ok) loadItems(); }); };
+          if (btn.dataset.tier !== '2') { go(); return; }
+          var s = r.settings.find(function (x) { return x.key === btn.dataset.key; });
+          if (s && s.value === el.value && (s.pendingValue === null || s.pendingValue === undefined)) { toast('変更はありません'); return; }
+          confirmBox('設定の変更：' + btn.dataset.key, '「' + (s ? (s.value === '' ? '空欄' : s.value) : '') + '」→「' + (el.value === '' ? '空欄' : el.value) + '」\n\nいつから：' + fromLabel + 'から。それまでは今の値のままです。\n\n' + (s ? s.effect : '') + '\n\nこの変更は操作ログに残ります。', fromLabel + 'から変える').then(function (yes) { if (yes) go(); else loadItems(); });
+        }; });
+        $$('.cancelp', $('#items')).forEach(function (btn) { btn.onclick = function () {
+          confirmBox('予約した値を取り消す', btn.dataset.key + ' の「次の月から」の変更を取り消し、今の値のままにします。', '取り消す').then(function (yes) { if (!yes) return; api('settings.save', { key: btn.dataset.key, cancelPending: true }).then(function (r) { toast(r.ok ? r.message : r.error, r.ok ? '' : 'err'); loadItems(); }); });
         }; });
       });
     };
