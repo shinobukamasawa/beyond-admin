@@ -37,6 +37,7 @@
   function checks(name, list, cur, labelOf, valueOf) {
     return '<div class="checks">' + list.map(function (x) { var v = valueOf ? valueOf(x) : x, l = labelOf ? labelOf(x) : x; return '<label><input type="checkbox" name="' + esc(name) + '" value="' + esc(v) + '"' + ((cur || []).indexOf(v) >= 0 ? ' checked' : '') + '>' + esc(l) + '</label>'; }).join('') + '</div>';
   }
+  function fixedText(s) { return (s.fixedSlots || []).map(function (f) { return f.weekday + ' ' + f.start + ' ' + teacherName(f.teacherId) + (f.weeks && f.weeks.length ? '（第' + f.weeks.join('・') + '）' : ''); }).join('／'); }
   function tags(list) { var color = { '同期待ち': 'yellow', '枠外': 'red', '休会中': 'orange', '退会': 'orange', '要望あり': 'blue', '回数戻し済': '', 'LINE未連携': '', '休会6か月超': 'orange', '要確認': 'red' }; return (list || []).map(function (t) { return '<span class="tag ' + (color[t] || 'green') + '">' + esc(t) + '</span>'; }).join(''); }
   function toast(msg, kind) {
     var el = document.createElement('div'); el.className = 't' + (kind === 'err' ? ' err' : ''); el.textContent = msg;
@@ -192,7 +193,7 @@
         $('#list').innerHTML = r.students.length ? '<table class="tbl"><thead><tr><th>生徒ID</th><th>氏名</th><th>フリガナ</th><th>電話番号</th><th>店舗</th><th>コース</th><th>在籍</th><th>残り／先使い</th><th>固定枠</th><th>LINE</th><th>印</th></tr></thead><tbody>' +
           r.students.map(function (s) {
             return '<tr class="click ' + (s.status === '在籍' ? '' : 'dim') + '" data-id="' + esc(s.id) + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(s.family + ' ' + s.given) + '</td><td class="nowrap">' + esc(s.kana) + '</td><td class="nowrap">' + esc(s.phone) + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.course) + '</td><td>' + esc(s.status) + '</td>' +
-              '<td class="num">' + s.remaining + '／' + s.advance + '</td><td class="nowrap small">' + (s.fixedWeekday ? esc(s.fixedWeekday + ' ' + s.fixedStart + ' ' + teacherName(s.fixedTeacherId)) : '') + '</td><td class="small">' + (s.lineLinked ? '連携済 ' + esc(s.lineLinkedOn) : '<span class="muted">未連携</span>') + '</td><td>' + tags(s.flags) + '</td></tr>';
+              '<td class="num">' + s.remaining + '／' + s.advance + '</td><td class="small">' + esc(fixedText(s)) + '</td><td class="small">' + (s.lineLinked ? '連携済 ' + esc(s.lineLinkedOn) : '<span class="muted">未連携</span>') + '</td><td>' + tags(s.flags) + '</td></tr>';
           }).join('') + '</tbody></table><div class="muted small" style="padding:6px">' + r.students.length + ' 人</div>' : '<div class="muted" style="padding:8px">該当する生徒がいません</div>';
         $$('tr.click', $('#list')).forEach(function (tr) { tr.onclick = function () { studentDialog(tr.dataset.id, load); }; });
       });
@@ -201,8 +202,8 @@
     $('#status').onchange = load; $('#store').onchange = load;
     $('#new').onclick = function () { studentDialog('', load); };
     $('#xlsx').onclick = function () {
-      var head = ['生徒ID', '姓', '名', 'フリガナ', '電話番号', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠_曜日', '固定枠_時間', '固定枠_先生', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
-      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.phone, s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), s.fixedWeekday, s.fixedStart, s.fixedTeacherId ? teacherName(s.fixedTeacherId) : '', s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
+      var head = ['生徒ID', '姓', '名', 'フリガナ', '電話番号', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
+      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.phone, s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), fixedText(s), s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
       xlsx('ビヨンド_名簿_' + today() + '.xlsx', [{ name: '名簿', rows: [['出力日時', fmtNow()], []].concat([head], rows) }], '名簿', rows.length, '');
     };
     load();
@@ -227,8 +228,8 @@
         '<div class="field full"><label>曜日NG</label>' + checks('ngWeekdays', me.lists.weekdays, s.ngWeekdays) + '</div>' +
         '<div class="field full"><label>希望時間帯</label>' + checks('timebands', me.lists.timebands, s.timebands) + '</div>' +
         '<div class="field full"><label>希望の先生</label>' + checks('preferredTeachers', tAct, s.preferredTeachers, function (t) { return t.name; }, function (t) { return t.id; }) + '</div>' +
-        '<div class="field full"><label>固定枠（曜日・時間・先生の3つ全部か、全部空）</label><div class="row"><select name="fixedWeekday" style="width:90px">' + opts(me.lists.weekdays, s.fixedWeekday, null, null, '曜日') + '</select>' +
-        '<select name="fixedStart" style="width:110px">' + timeOptions(s.fixedStart, me.stepMinutes) + '</select><select name="fixedTeacherId" style="width:160px">' + opts(tAct, s.fixedTeacherId, function (t) { return t.name; }, function (t) { return t.id; }, '先生') + '</select></div></div>' +
+        '<div class="field full"><label>固定枠（複数可。対象週は「第」の数字にチェック、空＝毎週）</label><div id="fixedRows"></div><button type="button" class="btn sub" id="fixedAdd">＋ 固定枠を足す</button>' +
+        '<div class="hint">曜日・時間・先生の3つで1本。隔週なら第1・3のように。連続の2枠は2本に分けて入れます。変更は翌月分から反映されます</div></div>' +
         '<div class="field full"><label>備考</label><textarea name="note">' + esc(s.note) + '</textarea></div></form>' +
         (isNew ? '' : '<div class="readonly-box" style="margin-top:10px"><span>生徒ID <b>' + esc(s.id) + '</b></span><span>残り回数 <b>' + s.remaining + '</b>／先使い <b>' + s.advance + '</b></span><span>回数付与済み月 <b>' + esc(s.grantedMonth) + '</b></span>' +
           '<span>LINE <b>' + (s.lineLinked ? '連携済み ' + esc(s.lineLinkedOn) : '未連携') + '</b></span><span>在籍状況変更日 <b>' + esc(s.statusChangedOn || '—') + '</b></span><span>今日以降の予約 <b>' + data.upcoming.length + ' 件</b></span><span>登録 <b>' + fmtDT(s.createdAt) + '</b></span><span>更新 <b>' + fmtDT(s.updatedAt) + '</b></span></div>' +
@@ -239,6 +240,23 @@
         footer: '<button type="button" class="btn sub close">閉じる</button><button type="button" class="btn save">保存</button>',
         onOpen: function (bg, close) {
           var form = $('#sf', bg);
+          var fixedRows = (s.fixedSlots || []).slice();
+          var readFixed = function () {
+            fixedRows = $$('.fx', bg).map(function (row) { return { weekday: $('.fx-wd', row).value, start: $('.fx-st', row).value, teacherId: $('.fx-t', row).value,
+              weeks: $$('.fx-w', row).filter(function (c) { return c.checked; }).map(function (c) { return Number(c.value); }) }; });
+            return fixedRows;
+          };
+          var drawFixed = function () {
+            $('#fixedRows', bg).innerHTML = fixedRows.map(function (f, i) {
+              return '<div class="row fx" data-i="' + i + '" style="margin-bottom:6px"><select class="fx-wd" style="width:80px">' + opts(me.lists.weekdays, f.weekday, null, null, '曜日') + '</select>' +
+                '<select class="fx-st" style="width:100px">' + timeOptions(f.start, me.stepMinutes) + '</select><select class="fx-t" style="width:150px">' + opts(tAct, f.teacherId, function (t) { return t.name; }, function (t) { return t.id; }, '先生') + '</select>' +
+                '<span class="small muted">第</span>' + [1, 2, 3, 4, 5].map(function (w) { return '<label class="small"><input type="checkbox" class="fx-w" value="' + w + '"' + ((f.weeks || []).map(Number).indexOf(w) >= 0 ? ' checked' : '') + '>' + w + '</label>'; }).join('') +
+                '<button type="button" class="btn ghost fx-del">削除</button></div>';
+            }).join('') || '<div class="muted small" style="margin-bottom:6px">なし</div>';
+            $$('.fx-del', bg).forEach(function (b) { b.onclick = function () { readFixed(); fixedRows.splice(Number(b.closest('.fx').dataset.i), 1); drawFixed(); }; });
+          };
+          $('#fixedAdd', bg).onclick = function () { readFixed(); fixedRows.push({ weekday: '', start: '', teacherId: '', weeks: [] }); drawFixed(); };
+          drawFixed();
           $('#course', bg).onchange = function () { var c = me.courses.find(function (x) { return x.name === $('#course', bg).value; }); if (c && (isNew || !form.monthlyCount.value)) form.monthlyCount.value = c.monthlyCount; };
           var autoApply = function () {
             var d = $('#requestDate', bg).value, k = $('#requestKind', bg).value;
@@ -247,7 +265,7 @@
           };
           $('#requestDate', bg).onchange = autoApply; $('#requestKind', bg).onchange = autoApply;
           $('.save', bg).onclick = function () {
-            var d = formData(form); if (!isNew) d.studentId = id;
+            var d = formData(form); if (!isNew) d.studentId = id; d.fixedSlots = readFixed();
             var go = function () {
               busy($('.save', bg), true);
               api('students.save', d).then(function (r) {
@@ -368,17 +386,17 @@
         $('#grid').innerHTML = '<div class="shift-grid"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>';
         $$('td.cell', $('#grid')).forEach(function (td) { td.onclick = function () { cellDialog(td.dataset.t, td.dataset.d, r, load); }; });
         var base = '<table class="tbl"><thead><tr><th>ID</th><th>先生</th><th>曜日</th><th>時間</th><th>店舗</th><th>適用開始</th><th>適用終了</th><th>備考</th><th></th></tr></thead><tbody>' + r.base.map(function (s) {
-          return '<tr class="' + (s.errors.length ? '' : '') + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(teacherName(s.teacherId)) + '</td><td>' + esc(s.weekday) + '</td><td class="nowrap">' + esc(s.start + '〜' + s.end) + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.validFrom) + '</td><td class="nowrap">' + esc(s.validTo) + '</td><td class="small">' + esc(s.note) + (s.errors.length ? '<div class="msg err small" style="margin:2px 0">' + esc(s.errors.join('／')) + '</div>' : '') + '</td>' +
+          return '<tr class="' + (s.errors.length ? '' : '') + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(teacherName(s.teacherId)) + '</td><td>' + esc(s.weekday) + '</td><td class="nowrap">' + esc(s.start + '〜' + s.end) + '</td><td>' + esc(s.store || 'どこでも') + '</td><td class="nowrap">' + esc(s.validFrom) + '</td><td class="nowrap">' + esc(s.validTo) + '</td><td class="small">' + esc(s.note) + (s.errors.length ? '<div class="msg err small" style="margin:2px 0">' + esc(s.errors.join('／')) + '</div>' : '') + '</td>' +
             '<td class="actions"><button type="button" class="btn small sub edit" data-id="' + esc(s.id) + '">編集</button><button type="button" class="btn small danger del" data-id="' + esc(s.id) + '">削除</button></td></tr>';
         }).join('') + '</tbody></table>';
         var exc = r.exceptions.length ? '<table class="tbl"><thead><tr><th>ID</th><th>先生</th><th>種別</th><th>日付</th><th>時間</th><th>店舗</th><th>備考</th><th></th></tr></thead><tbody>' + r.exceptions.map(function (s) {
-          return '<tr><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(teacherName(s.teacherId)) + '</td><td>' + esc(s.kind) + '</td><td class="nowrap">' + fmtD(s.date) + '</td><td class="nowrap">' + (s.start ? esc(s.start + '〜' + s.end) : '終日') + '</td><td>' + esc(s.store) + '</td><td class="small">' + esc(s.note) + '</td>' +
+          return '<tr><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(teacherName(s.teacherId)) + '</td><td>' + esc(s.kind) + '</td><td class="nowrap">' + fmtD(s.date) + '</td><td class="nowrap">' + (s.start ? esc(s.start + '〜' + s.end) : '終日') + '</td><td>' + esc(s.store || 'どこでも') + '</td><td class="small">' + esc(s.note) + '</td>' +
             '<td class="actions"><button type="button" class="btn small sub edit" data-id="' + esc(s.id) + '">編集</button><button type="button" class="btn small danger del" data-id="' + esc(s.id) + '">削除</button></td></tr>';
         }).join('') + '</tbody></table>' : '<div class="muted" style="padding:8px">この月の休み・臨時出勤はありません</div>';
         var outside = r.outside.length ? '<div class="msg warn">先生の出勤時間の外に出ている予約が ' + r.outside.length + ' 件あります（予約は残っています。振替の連絡をお願いします） <a class="btn small sub" href="#bookings?from=' + r.outside[0].date + '&to=' + r.outside[r.outside.length - 1].date + '&state=予約中&select=' + r.outside.map(function (b) { return b.id; }).join(',') + '">予約の画面で選んだ状態で開く</a></div>' + bookingTable(r.outside) : '';
         $('#xlsx').onclick = function () {
-          var base = [['出力日時', fmtNow()], [], ['ID', '先生', '曜日', '開始', '終了', '店舗', '適用開始', '適用終了', '備考']].concat(r.base.map(function (x) { return [x.id, teacherName(x.teacherId), x.weekday, x.start, x.end, x.store, x.validFrom, x.validTo, x.note]; }));
-          var exc = [['対象月', month], [], ['ID', '先生', '種別', '日付', '開始', '終了', '店舗', '備考']].concat(r.exceptions.map(function (x) { return [x.id, teacherName(x.teacherId), x.kind, x.date, x.start || '終日', x.end, x.store, x.note]; }));
+          var base = [['出力日時', fmtNow()], [], ['ID', '先生', '曜日', '開始', '終了', '店舗', '適用開始', '適用終了', '備考']].concat(r.base.map(function (x) { return [x.id, teacherName(x.teacherId), x.weekday, x.start, x.end, x.store || 'どこでも', x.validFrom, x.validTo, x.note]; }));
+          var exc = [['対象月', month], [], ['ID', '先生', '種別', '日付', '開始', '終了', '店舗', '備考']].concat(r.exceptions.map(function (x) { return [x.id, teacherName(x.teacherId), x.kind, x.date, x.start || '終日', x.end, x.store || 'どこでも', x.note]; }));
           var grid = [['先生'].concat(r.days.map(function (d) { return (+d.ymd.substring(8)) + '（' + d.weekday + '）'; }))].concat(r.teachers.map(function (t) { return [t.name].concat(r.days.map(function (d) { return (r.cells[t.id + '|' + d.ymd] || []).map(function (iv) { return hm(iv.start) + '-' + hm(iv.end); }).join(' '); })); }));
           xlsx('ビヨンド_シフト_' + month + '.xlsx', [{ name: '一面表示', rows: [['対象月', month], ['出力日時', fmtNow()], []].concat(grid) }, { name: '基本パターン', rows: base }, { name: '休み・臨時出勤', rows: exc }], 'シフト', r.base.length + r.exceptions.length, month);
         };
@@ -404,7 +422,7 @@
   function cellDialog(teacherId, date, r, onDone) {
     var ivs = r.cells[teacherId + '|' + date] || [], ex = r.exceptions.filter(function (e) { return e.teacherId === teacherId && e.date === date; });
     var m = openModal({ title: teacherName(teacherId) + '先生　' + fmtD(date), size: 'narrow',
-      body: '<div class="avail"><b>出勤時間</b>：' + (ivs.length ? ivs.map(function (iv) { return hm(iv.start) + '〜' + hm(iv.end) + '（' + iv.store + '）'; }).join('、') : '<span class="muted">出勤なし</span>') + '<br><b>予約中</b>：' + (r.bookingCount[teacherId + '|' + date] || 0) + ' 件</div>' +
+      body: '<div class="avail"><b>出勤時間</b>：' + (ivs.length ? ivs.map(function (iv) { return hm(iv.start) + '〜' + hm(iv.end) + '（' + (iv.store || 'どこでも') + '）'; }).join('、') : '<span class="muted">出勤なし</span>') + '<br><b>予約中</b>：' + (r.bookingCount[teacherId + '|' + date] || 0) + ' 件</div>' +
         (ex.length ? '<h3>この日の休み・臨時出勤</h3><table class="tbl"><tbody>' + ex.map(function (e) { return '<tr><td>' + esc(e.kind) + '</td><td>' + (e.start ? esc(e.start + '〜' + e.end) : '終日') + '</td><td>' + esc(e.store) + '</td><td class="small">' + esc(e.note) + '</td><td class="actions"><button type="button" class="btn small sub edit" data-id="' + esc(e.id) + '">編集</button></td></tr>'; }).join('') + '</tbody></table>' : '') +
         '<h3>この日に入れる</h3><div class="row"><button type="button" class="btn sub add" data-kind="休み">休み（終日）</button><button type="button" class="btn sub add" data-kind="休み時間">休み（時間を指定）</button><button type="button" class="btn sub add" data-kind="臨時出勤">臨時出勤</button></div>' +
         '<div class="muted small" style="margin-top:8px">休みを入れた時間に予約があれば、保存のあとに知らせます（予約は消えません）。</div>',
@@ -420,7 +438,7 @@
       body: '<form class="form" id="wf"><input type="hidden" name="kind" value="' + esc(kind) + '">' +
         '<div class="field full"><label>先生</label><select name="teacherId"' + (isNew ? '' : ' disabled') + '>' + opts(tAct, s.teacherId, function (t) { return t.name; }, function (t) { return t.id; }, '選んでください') + '</select></div>' +
         (kind === '基本' ? '<div class="field"><label>曜日</label><select name="weekday">' + opts(me.lists.weekdays, s.weekday, null, null, '選んでください') + '</select></div>' : '<div class="field"><label>日付</label><input type="date" name="date" value="' + esc(s.date) + '"></div>') +
-        (kind === '休み' ? '<div class="field"><label>休みの範囲</label><select name="allDay" id="allDay"><option value="1"' + (s.allDay || (!isNew && !s.start) ? ' selected' : '') + '>終日</option><option value="0"' + (!(s.allDay || (!isNew && !s.start)) ? ' selected' : '') + '>時間を指定</option></select></div>' : '<div class="field"><label>店舗</label><select name="store">' + opts(me.stores.map(function (x) { return x.name; }), s.store, null, null, '選んでください') + '</select></div>') +
+        (kind === '休み' ? '<div class="field"><label>休みの範囲</label><select name="allDay" id="allDay"><option value="1"' + (s.allDay || (!isNew && !s.start) ? ' selected' : '') + '>終日</option><option value="0"' + (!(s.allDay || (!isNew && !s.start)) ? ' selected' : '') + '>時間を指定</option></select></div>' : '<div class="field"><label>店舗</label><select name="store">' + opts(me.stores.map(function (x) { return x.name; }), s.store, null, null, '指定なし（担当店舗のどこでも）') + '</select><div class="hint">校舎を移動する先生は「指定なし」。予約の店舗は生徒さんの店舗になり、別の校舎の予約との間は設定の「移動時間」だけ空きます</div></div>') +
         '<div class="field" id="timeRow"><label>開始〜終了</label><div class="row"><select name="start" style="width:110px">' + timeOptions(s.start, me.stepMinutes, 480, 1380) + '</select>〜<select name="end" style="width:110px">' + timeOptions(s.end, me.stepMinutes, 480, 1380) + '</select></div></div>' +
         (kind === '基本' ? '<div class="field"><label>適用開始日（任意）</label><input type="date" name="validFrom" value="' + esc(s.validFrom) + '"><div class="hint">「来月からシフトを変える」を前もって入れるとき</div></div><div class="field"><label>適用終了日（任意）</label><input type="date" name="validTo" value="' + esc(s.validTo) + '"></div>' : '') +
         '<div class="field full"><label>備考</label><input type="text" name="note" value="' + esc(s.note) + '"></div></form>' +
