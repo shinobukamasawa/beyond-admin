@@ -161,7 +161,8 @@
       var sync = r.sync.pending ? '<div class="msg warn">カレンダーへの書き出しが <b>' + r.sync.pending + ' 件</b> 待ちです（2分おきに自動で再試行します）。 <button type="button" class="btn small sub" id="retry">今すぐ再試行</button>' +
         (r.sync.failing.length ? '<br>失敗が続いているもの：' + r.sync.failing.map(function (f) { return esc(f.bookingId) + '（' + esc(f.target) + '・' + f.attempts + '回）' + esc(f.error); }).join('／') : '') + '</div>' : '';
       var runs = (r.jobRuns || []).length ? '<table class="tbl"><thead><tr><th>日付</th><th>開始</th><th>終了</th><th>結果</th></tr></thead><tbody>' + r.jobRuns.map(function (j) { return '<tr><td class="nowrap">' + fmtD(j.date) + '</td><td class="nowrap">' + fmtDT(j.startedAt) + '</td><td class="nowrap">' + (j.finishedAt ? fmtDT(j.finishedAt) : '<span class="tag yellow">実行中</span>') + '</td><td class="small">' + esc(j.result) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">まだ走っていません</div>';
-      var regf = r.registrationsPending ? '<div class="msg warn">初回登録の確認待ちが <b>' + r.registrationsPending + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で承認か却下をしてください。</div>' : '';
+      var regf = (r.registrationsPending ? '<div class="msg warn">初回登録の確認待ちが <b>' + r.registrationsPending + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で承認か却下をしてください。</div>' : '') +
+        (r.registrationsUnchecked ? '<div class="msg info">未確認の新規登録が <b>' + r.registrationsUnchecked + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で、LINE の表示名と生徒さんを見比べて「確認済み」にしてください。</div>' : '');
       var outside = r.outsideCount ? '<div class="msg warn">先生の出勤時間の外に出ている予約が <b>' + r.outsideCount + ' 件</b> あります。<a href="#bookings">予約の画面</a>で「枠外」の印を確認してください。</div>' : '';
       var att = r.attention.length ? '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.attention.map(function (a) { return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="nowrap">' + esc(a.target) + '</td><td>' + esc(a.message) + '</td></tr>'; }).join('') + '</tbody></table>'
         : '<div class="muted">対応が要るものはありません</div>';
@@ -174,9 +175,9 @@
     });
   }
 
-  // ---------- 初回登録（確認待ち・最近の登録。docs/touroku-kae.md 2.4。2026-10-01） ----------
+  // ---------- 初回登録（確認待ち・新規登録の確認。docs/touroku-kae.md 2.4。2026-10-01） ----------
   function pageRegistrations() {
-    var head = '<h2>初回登録 <span class="sub">スクールの確認待ちと、最近 LINE を紐付けた生徒</span></h2>';
+    var head = '<h2>初回登録 <span class="sub">スクールの確認待ちと、新しく LINE を紐付けた生徒の確認</span></h2>';
     var v = shell(head + '<div class="loading">読み込み中…</div>');
     api('registrations.list').then(function (r) {
       if (!v.isConnected) return;
@@ -184,27 +185,30 @@
       var pend = r.pending.length ? r.pending.map(function (p) {
         var cands = p.candidates.length ? '<table class="tbl"><thead><tr><th>生徒</th><th>フリガナ</th><th>店舗</th><th>固定の曜日</th><th>LINE</th><th>候補の理由</th><th></th></tr></thead><tbody>' + p.candidates.map(function (c) {
           return '<tr><td class="nowrap"><a href="#students?id=' + esc(c.id) + '">' + esc(c.id) + ' ' + esc(c.name) + '</a>' + (c.status !== '在籍' ? ' <span class="tag orange">' + esc(c.status) + '</span>' : '') + '</td><td class="nowrap">' + esc(c.kana) + '</td>' +
-            '<td class="nowrap">' + esc(c.store) + (c.store !== p.store ? ' <span class="tag yellow">入力と違う</span>' : '') + '</td><td>' + esc(c.fixed.join('・') || '—') + '</td>' +
+            '<td class="nowrap">' + esc(c.store) + '</td><td>' + esc(c.fixed.join('・') || '—') + '</td>' +
             '<td class="nowrap">' + (c.linkedHere ? '<span class="tag">この LINE</span>' : c.linked ? '<span class="tag red">別の LINE</span>' : '未連携') + '</td><td class="small">' + esc(c.why) + '</td>' +
             '<td class="actions"><button type="button" class="btn small ap" data-r="' + p.id + '" data-s="' + esc(c.id) + '">この生徒で承認</button></td></tr>';
         }).join('') + '</tbody></table>' : '<div class="muted">名簿に近い生徒が見つかりません</div>';
+        var extra = (p.before.length ? '<div class="small muted" style="margin-top:4px">入れ直し前：' + p.before.map(function (b) { return esc(b.kana) + '（' + esc(b.name) + '・' + fmtDT(b.at) + '）'; }).join(' → ') + ' → いまの入力</div>' : '') +
+          (p.sameLine.length ? '<div class="small" style="margin-top:4px"><span class="tag yellow">同じ LINE から ほかに ' + p.sameLine.length + ' 件</span> ' + p.sameLine.map(function (x) { return esc(x.kana) + '（' + fmtDT(x.at) + '）'; }).join('・') + '（ご兄弟の登録かもしれません）</div>' : '');
         return '<div class="card" data-r="' + p.id + '"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div>' +
-          '<div class="small muted">' + fmtDT(p.at) + '　<span class="tag yellow">' + esc(p.reason) + '</span></div>' +
+          '<div class="small muted">' + fmtDT(p.at) + '　<span class="tag yellow">' + esc(p.reason) + '</span>　LINE：' + esc(p.lineName || '（表示名なし）') + '</div>' +
           '<div style="font-size:16px;margin:4px 0"><b>' + esc(p.kana) + '</b>　' + esc(p.family + ' ' + p.given) + '</div>' +
-          '<div class="small">電話 ' + esc(p.phone) + '　教室 ' + esc(p.store) + '　通い方 ' + esc(p.attend) + (p.weekdays.length ? '（' + esc(p.weekdays.join('・')) + '）' : '') + '</div></div>' +
+          '<div class="small">電話 ' + esc(p.phone) + '</div>' + extra + '</div>' +
           '<div class="row" style="gap:6px"><input type="text" class="sid" placeholder="生徒ID（S0123）" style="width:140px"><button type="button" class="btn small sub byid" data-r="' + p.id + '">ID で承認</button>' +
           '<button type="button" class="btn small sub addap" data-r="' + p.id + '">名簿に追加して承認</button><button type="button" class="btn small danger rej" data-r="' + p.id + '">却下</button></div></div>' +
           '<div style="margin-top:8px">' + cands + '</div></div>';
       }).join('') : '<div class="card muted">確認待ちはありません</div>';
-      var rec = r.recent.length ? '<table class="tbl"><thead><tr><th>連携日</th><th>生徒</th><th>フリガナ</th><th>名簿の店舗</th><th>生徒が入れた名前・教室</th><th>方法</th><th></th></tr></thead><tbody>' + r.recent.map(function (x) {
-        return '<tr><td class="nowrap">' + fmtD(x.linkedOn) + '</td><td class="nowrap"><a href="#students?id=' + esc(x.id) + '">' + esc(x.id) + ' ' + esc(x.name) + '</a></td><td class="nowrap">' + esc(x.kana) + '</td><td class="nowrap">' + esc(x.store) + '</td>' +
-          '<td class="small">' + (x.input ? esc(x.input.name) + '・' + esc(x.input.store) + (x.storeDiffers ? ' <span class="tag yellow">店舗が名簿と違う</span>' : '') : '—') + '</td><td class="small nowrap">' + esc(x.how) + '</td>' +
-          '<td class="actions"><button type="button" class="btn small ghost unl" data-s="' + esc(x.id) + '" data-n="' + esc(x.name) + '">紐付けを解除</button></td></tr>';
+      var rec = r.recent.length ? '<table class="tbl"><thead><tr><th>確認済み</th><th>登録</th><th>LINE の表示名</th><th></th><th>紐付いた生徒</th><th>フリガナ</th><th>店舗</th><th>生徒が入れた名前</th><th>方法</th><th></th></tr></thead><tbody>' + r.recent.map(function (x) {
+        return '<tr class="' + (x.checked ? 'dim' : '') + '"><td><input type="checkbox" class="chk" data-id="' + x.id + '"' + (x.checked ? ' checked' : '') + ' title="' + esc(x.checked ? '確認済み：' + x.checkedBy : '未確認') + '"></td>' +
+          '<td class="nowrap">' + fmtDT(x.at) + '</td><td class="nowrap">' + esc(x.lineName || '（表示名なし）') + '</td><td>→</td>' +
+          '<td class="nowrap"><a href="#students?id=' + esc(x.studentId) + '">' + esc(x.studentId) + ' ' + esc(x.name) + '</a>' + (x.stillLinked ? '' : ' <span class="tag">解除済み</span>') + '</td><td class="nowrap">' + esc(x.kana) + '</td><td class="nowrap">' + esc(x.store) + '</td>' +
+          '<td class="small">' + esc(x.input) + '</td><td class="small nowrap">' + esc(x.how) + '</td>' +
+          '<td class="actions">' + (x.stillLinked ? '<button type="button" class="btn small ghost unl" data-s="' + esc(x.studentId) + '" data-n="' + esc(x.name) + '">紐付けを解除</button>' : '') + '</td></tr>';
       }).join('') + '</tbody></table>' : '<div class="muted">ありません</div>';
       v.innerHTML = head +
-        '<h3>確認待ち（' + r.pending.length + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まらなかった登録です。候補から選んで承認すると、その生徒さんに LINE が紐付き、入力の電話番号が名簿に入ります。生徒さんは次に LINE を開いたときから使えます（通知は送りません）。</div>' + pend +
-        '<h3 style="margin-top:20px">最近30日に登録した人（' + r.recent.length + ' 人）</h3><div class="muted small" style="margin-bottom:8px">フリガナだけで紐付くので、心当たりのない登録や、名前・教室が名簿と合わないものは「紐付けを解除」してください（週に1回の確認を目安に）。</div><div class="card">' + rec + '</div>';
-      var regOf = function (rid) { return r.pending.find(function (p) { return p.id === Number(rid); }); };
+        '<h3>確認待ち（' + r.pending.length + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まらなかった登録です（同じフリガナが2人以上・名簿にない・別の LINE で登録済み）。候補から選んで承認すると、その生徒さんに LINE が紐付き、入力の電話番号が名簿に入ります。生徒さんは次に LINE を開いたときから使えます（通知は送りません）。</div>' + pend +
+        '<h3 style="margin-top:20px">新規登録（未確認 ' + r.uncheckedCount + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まって、その場で登録された生徒さんです（登録は止めていません）。LINE の表示名と紐付いた生徒さんを見比べて、合っていれば「確認済み」にチェック。心当たりがなければ「紐付けを解除」。未確認のものは日数に関係なく残り、確認済みは30日で消えます。</div><div class="card">' + rec + '</div>';
       var approve = function (rid, sid, replace) {
         return api('registrations.approve', { id: rid, studentId: sid, replace: !!replace }).then(function (x) {
           if (!x.ok && x.code === 'linked') {
@@ -221,10 +225,13 @@
         });
       }; });
       $$('.addap', v).forEach(function (b) { b.onclick = function () {
-        var p = regOf(b.dataset.r);
+        var p = r.pending.find(function (x) { return x.id === Number(b.dataset.r); });
         // 新規登録の画面を入力内容で埋めて開く。保存できたら、その生徒で承認する
         studentDialog(null, function (res) { if (res && res.ok && res.studentId) approve(p.id, res.studentId); },
-          { family: p.family, given: p.given, kana: p.kana.replace(/[\s　]/g, ''), phone: p.phone, store: p.store });
+          { family: p.family, given: p.given, kana: p.kana.replace(/[\s　]/g, ''), phone: p.phone });
+      }; });
+      $$('.chk', v).forEach(function (c) { c.onchange = function () {
+        api('registrations.check', { id: c.dataset.id, checked: c.checked }).then(function (x) { if (!x.ok) { toast(x.error, 'err'); c.checked = !c.checked; return; } pageRegistrations(); });
       }; });
       $$('.unl', v).forEach(function (b) { b.onclick = function () {
         confirmBox('紐付けを解除', b.dataset.n + ' さんの LINE の紐付けを解除します。\n生徒さんは次に LINE を開いたときに初回登録をやり直します。', '解除する', true).then(function (yes) {
