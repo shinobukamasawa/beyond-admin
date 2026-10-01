@@ -148,7 +148,7 @@
     return '<table class="tbl"><thead><tr>' + (o.select ? '<th><input type="checkbox" id="selall" title="すべて選ぶ"></th>' : '') + '<th>予約ID</th><th>日付</th><th>時間</th><th>生徒</th><th>先生</th><th>店舗</th><th>コース</th><th>状態</th><th>経路</th><th>注意</th><th>要望メモ</th>' + (o.actions ? '<th></th>' : '') + '</tr></thead><tbody>' +
       rows.map(function (b) {
         return '<tr data-id="' + esc(b.id) + '" class="' + (b.state === '予約中' ? '' : 'dim') + '">' + (o.select ? '<td>' + (b.state === '予約中' || b.state === '期限後欠席' ? '<input type="checkbox" class="sel" value="' + esc(b.id) + '">' : '') + '</td>' : '') + '<td class="nowrap">' + esc(b.id) + '</td><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td>' +
-          '<td class="nowrap"><a href="#students?id=' + esc(b.studentId) + '">' + esc(b.studentName) + '</a></td><td class="nowrap">' + esc(b.teacherName) + '</td><td>' + esc(b.store) + '</td><td class="nowrap">' + esc(b.course) + '</td>' +
+          '<td class="nowrap"><a href="#students?id=' + esc(b.studentId) + '">' + esc(b.studentName) + '</a></td><td class="nowrap">' + esc(b.teacherName) + '</td><td>' + esc(b.store) + (b.online ? ' <span class="tag blue">オンライン</span>' : '') + '</td><td class="nowrap">' + esc(b.course) + '</td>' +
           '<td class="nowrap state-' + esc(b.state) + '">' + esc(b.state) + (b.toId ? '<span class="muted small">→' + esc(b.toId) + '</span>' : '') + '</td><td class="nowrap">' + esc(b.route) + '</td><td>' + tags(b.attention) + '</td><td class="small">' + esc(b.memo) + '</td>' +
           (o.actions ? '<td class="actions">' + o.actions(b) + '</td>' : '') + '</tr>';
       }).join('') + '</tbody></table>';
@@ -310,7 +310,7 @@
           var fixedRows = (s.fixedSlots || []).slice();
           var readFixed = function () {
             fixedRows = $$('.fx', bg).map(function (row) { return { weekday: $('.fx-wd', row).value, start: $('.fx-st', row).value, teacherId: $('.fx-t', row).value,
-              weeks: $$('.fx-w', row).filter(function (c) { return c.checked; }).map(function (c) { return Number(c.value); }) }; });
+              weeks: $$('.fx-w', row).filter(function (c) { return c.checked; }).map(function (c) { return Number(c.value); }), online: $('.fx-on', row).checked }; });
             return fixedRows;
           };
           var drawFixed = function () {
@@ -318,6 +318,7 @@
               return '<div class="row fx" data-i="' + i + '" style="margin-bottom:6px"><select class="fx-wd" style="width:80px">' + opts(me.lists.weekdays, f.weekday, null, null, '曜日') + '</select>' +
                 '<select class="fx-st" style="width:100px">' + timeOptions(f.start, me.stepMinutes) + '</select><select class="fx-t" style="width:150px">' + opts(tAct, f.teacherId, function (t) { return t.name; }, function (t) { return t.id; }, '先生') + '</select>' +
                 '<span class="small muted">第</span>' + [1, 2, 3, 4, 5].map(function (w) { return '<label class="small"><input type="checkbox" class="fx-w" value="' + w + '"' + ((f.weeks || []).map(Number).indexOf(w) >= 0 ? ' checked' : '') + '>' + w + '</label>'; }).join('') +
+                '<label class="small" style="margin-left:6px"><input type="checkbox" class="fx-on"' + (f.online ? ' checked' : '') + '>オンライン</label>' +
                 '<button type="button" class="btn ghost fx-del">削除</button></div>';
             }).join('') || '<div class="muted small" style="margin-bottom:6px">なし</div>';
             $$('.fx-del', bg).forEach(function (b) { b.onclick = function () { readFixed(); fixedRows.splice(Number(b.closest('.fx').dataset.i), 1); drawFixed(); }; });
@@ -539,6 +540,7 @@
       '<select id="teacher"><option value="">先生：すべて</option>' + opts(me.teachers, q.teacherId || '', function (t) { return t.name; }, function (t) { return t.id; }) + '</select>' +
       '<select id="store"><option value="">店舗：すべて</option>' + opts(me.stores.map(function (s) { return s.name; }), q.store || '') + '</select>' +
       '<select id="state"><option value="">状態：すべて</option>' + opts(me.lists.states, q.state === undefined ? '予約中' : q.state) + '</select>' +
+      '<label class="small"><input type="checkbox" id="fonline"> オンラインだけ</label>' +
       (q.studentId ? '<span class="tag blue">生徒 ' + esc(q.studentId) + ' <a href="#bookings" style="margin-left:4px">×</a></span>' : '') +
       '<button type="button" class="btn sub" id="search">表示</button><span class="grow"></span><button type="button" class="btn sub" id="xlsx">Excel に出す</button><button type="button" class="btn" id="add">＋ 予約を追加</button></div>' +
       '<div id="bulkbar" class="row" style="display:none;margin-bottom:8px"><b><span id="selcount">0</span> 件を選択中</b><button type="button" class="btn small sub" id="bulk-cancel">まとめてキャンセル</button><button type="button" class="btn small sub" id="bulk-close">まとめて休講</button><span class="muted small">（キャンセルは期限を過ぎたものを外します。休講は期限を見ません）</span></div><div id="list" class="loading">読み込み中…</div>');
@@ -546,14 +548,14 @@
     var selected = function () { return $$('.sel:checked', $('#list')).map(function (c) { return c.value; }); };
     var syncBar = function () { var n = selected().length; $('#bulkbar').style.display = n ? '' : 'none'; $('#selcount').textContent = n; };
     var load = function () {
-      var p = { from: $('#from').value, to: $('#to').value, teacherId: $('#teacher').value, store: $('#store').value, state: $('#state').value, studentId: q.studentId || '' };
+      var p = { from: $('#from').value, to: $('#to').value, teacherId: $('#teacher').value, store: $('#store').value, state: $('#state').value, studentId: q.studentId || '', online: $('#fonline').checked };
       api('bookings.list', p).then(function (r) {
         if (!v.isConnected) return;
         if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
         last = r.bookings;
         $('#list').innerHTML = bookingTable(r.bookings, { empty: '該当する予約はありません', select: true, actions: function (b) {
           var a = [];
-          if (b.state === '予約中') a.push(['move', '日時変更'], ['cancel', 'キャンセル'], ['absent', '期限後欠席'], ['close', '休講']);
+          if (b.state === '予約中') a.push(['move', '日時変更'], ['cancel', 'キャンセル'], ['absent', '期限後欠席'], ['close', '休講'], ['online', b.online ? 'オンラインを外す' : 'オンラインにする']);
           if (b.state === '期限後欠席') { if (!b.refundedAt) a.push(['refund', '回数を戻す']); a.push(['close', '休講']); }
           if (b.attention.indexOf('同期待ち') >= 0) a.push(['requeue', '書き出し直す']);
           return a.map(function (x) { return '<button type="button" class="btn small sub act" data-act="' + x[0] + '" data-id="' + esc(b.id) + '">' + x[1] + '</button>'; }).join('');
@@ -593,6 +595,8 @@
     var done = function (r) { if (!r.ok) { toast(r.error, 'err'); return false; } toast(r.message); onDone(); setTimeout(onDone, 4000); return true; };
     if (act === 'move') { bookingForm(b, onDone); return; }
     if (act === 'requeue') { api('sync.requeue', { bookingId: b.id }).then(done); return; }
+    // オンライン（2026-10-01）：生徒が LINE で入れた予約は印なしで入るので、ここで付ける。カレンダーの予定とリマインドに「オンライン」と出る
+    if (act === 'online') { api('bookings.setOnline', { bookingId: b.id, online: !b.online }).then(done); return; }
     if (act === 'cancel') {
       confirmBox('予約をキャンセル', describe(b) + '\n\nキャンセルします。回数は1回戻ります。よろしいですか？\n（変更期限を過ぎているときはキャンセルできず、「期限後欠席」を案内します）', 'キャンセルする', true).then(function (yes) {
         if (!yes) return;
@@ -622,6 +626,7 @@
         '<div class="field"><label>日付</label><input type="date" name="date" id="date" value="' + esc(b ? b.date : today()) + '" min="' + today() + '"></div>' +
         '<div class="field"><label>開始時刻</label><select name="start" id="start">' + timeOptions(b ? hm(b.start) : '', me.stepMinutes, 540, 1380) + '</select><div class="hint">終了は' + (b ? '元の予約と同じ長さ' : '生徒のコースの時間') + 'で決まります</div></div>' +
         '<div class="field"><label>&nbsp;</label><button type="button" class="btn sub" id="avail">空き確認</button></div>' +
+        '<div class="field full"><label><input type="checkbox" id="online"' + (b && b.online ? ' checked' : '') + '> オンライン（Teams）</label><div class="hint">店舗は生徒の店舗のまま。店舗間の移動時間は見ません。カレンダーの予定とリマインドに「オンライン」と出ます</div></div>' +
         '<div class="field full"><label>その日のその先生の出勤時間と予約</label><div class="avail" id="availBox"><span class="muted">先生と日付を選んで「空き確認」</span></div></div></form>' +
         '<div class="muted small">' + (b ? '運営の日時変更は変更期限を過ぎていてもできます。元の予約は「振替済」になり、回数は動きません。' : '運営の追加は、生徒の希望条件や受付の締切は見ません。出勤時間の中で、先生・生徒の予約と重ならず、回数が残っていれば入ります。') + '</div>',
       footer: '<button type="button" class="btn sub close">やめる</button><button type="button" class="btn save">' + (b ? '変更する' : '追加する') + '</button>',
@@ -652,7 +657,7 @@
           };
         }
         $('.save', bg).onclick = function () {
-          var d = formData(form); if (b) d.bookingId = b.id;
+          var d = formData(form); if (b) d.bookingId = b.id; d.online = $('#online', bg).checked;
           busy($('.save', bg), true);
           api(b ? 'bookings.move' : 'bookings.add', d).then(function (r) { busy($('.save', bg), false); if (!r.ok) { showMsg(bg, r.error, 'err'); return; } toast(r.message); close(); if (onDone) { onDone(); setTimeout(onDone, 4000); } });
         };
