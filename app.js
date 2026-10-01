@@ -97,7 +97,7 @@
   function showMsg(bg, text, kind) { var m = $('.fmsg', bg); if (!m) { m = document.createElement('div'); m.className = 'fmsg'; $('.mb', bg).prepend(m); } m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ''; if (text) $('.mb', bg).scrollIntoView({ block: 'start' }); }
 
   // ---------- 枠組みとログイン ----------
-  var PAGES = [['home', 'ホーム'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
+  var PAGES = [['home', 'ホーム'], ['registrations', '初回登録'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
   function shell(inner) {
     var nav = PAGES.map(function (p) { return '<a href="#' + p[0] + '" class="' + (S.page === p[0] ? 'on' : '') + '">' + p[1] + '</a>'; }).join('');
     app.innerHTML = '<div class="topbar"><div class="brand">' + esc(CFG.schoolName) + ' 予約管理' + (CFG.envLabel ? '<span class="env">' + esc(CFG.envLabel) + '</span>' : '') + '</div><nav>' + nav + '</nav>' +
@@ -138,7 +138,7 @@
     var h = location.hash.replace(/^#/, '') || 'home', q = {};
     var i = h.indexOf('?'); if (i >= 0) { h.substring(i + 1).split('&').forEach(function (kv) { var p = kv.split('='); q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || ''); }); h = h.substring(0, i); }
     S.page = PAGES.some(function (p) { return p[0] === h; }) ? h : 'home'; S.query = q;
-    ({ home: pageHome, students: pageStudents, teachers: pageTeachers, shifts: pageShifts, bookings: pageBookings, results: pageResults, settings: pageSettings, logs: pageLogs, staff: pageStaff })[S.page]();
+    ({ home: pageHome, registrations: pageRegistrations, students: pageStudents, teachers: pageTeachers, shifts: pageShifts, bookings: pageBookings, results: pageResults, settings: pageSettings, logs: pageLogs, staff: pageStaff })[S.page]();
   }
 
   // ---------- ホーム ----------
@@ -161,17 +161,76 @@
       var sync = r.sync.pending ? '<div class="msg warn">カレンダーへの書き出しが <b>' + r.sync.pending + ' 件</b> 待ちです（2分おきに自動で再試行します）。 <button type="button" class="btn small sub" id="retry">今すぐ再試行</button>' +
         (r.sync.failing.length ? '<br>失敗が続いているもの：' + r.sync.failing.map(function (f) { return esc(f.bookingId) + '（' + esc(f.target) + '・' + f.attempts + '回）' + esc(f.error); }).join('／') : '') + '</div>' : '';
       var runs = (r.jobRuns || []).length ? '<table class="tbl"><thead><tr><th>日付</th><th>開始</th><th>終了</th><th>結果</th></tr></thead><tbody>' + r.jobRuns.map(function (j) { return '<tr><td class="nowrap">' + fmtD(j.date) + '</td><td class="nowrap">' + fmtDT(j.startedAt) + '</td><td class="nowrap">' + (j.finishedAt ? fmtDT(j.finishedAt) : '<span class="tag yellow">実行中</span>') + '</td><td class="small">' + esc(j.result) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">まだ走っていません</div>';
-      var regf = (r.registerFails || []).length ? '<div class="card"><h3 style="margin-top:0">初回登録できていない LINE（14日。名簿にいない子に気づくため）</h3><table class="tbl"><thead><tr><th>最終</th><th>入れたフリガナ</th><th>電話番号</th><th>回数</th><th>名簿に同じフリガナ</th></tr></thead><tbody>' + r.registerFails.map(function (f) { return '<tr><td class="nowrap">' + fmtDT(f.at) + '</td><td class="nowrap">' + esc(f.kana) + '</td><td class="nowrap">' + esc(f.phone) + '</td><td class="num">' + f.fails + '</td><td class="small">' + (f.sameKana ? esc(f.sameKana) + '（電話番号が違う）' : '<span class="tag red">なし（名簿に登録が要る？）</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '';
+      var regf = r.registrationsPending ? '<div class="msg warn">初回登録の確認待ちが <b>' + r.registrationsPending + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で承認か却下をしてください。</div>' : '';
       var outside = r.outsideCount ? '<div class="msg warn">先生の出勤時間の外に出ている予約が <b>' + r.outsideCount + ' 件</b> あります。<a href="#bookings">予約の画面</a>で「枠外」の印を確認してください。</div>' : '';
       var att = r.attention.length ? '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.attention.map(function (a) { return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="nowrap">' + esc(a.target) + '</td><td>' + esc(a.message) + '</td></tr>'; }).join('') + '</tbody></table>'
         : '<div class="muted">対応が要るものはありません</div>';
-      v.innerHTML = '<h2>ホーム <span class="sub">' + fmtD(r.today) + '</span></h2>' + sync + outside +
+      v.innerHTML = '<h2>ホーム <span class="sub">' + fmtD(r.today) + '</span></h2>' + sync + outside + regf +
         '<div class="card"><h3 style="margin-top:0">今日 ' + fmtD(r.today) + '（' + r.todayList.length + ' 件）</h3>' + bookingTable(r.todayList) + '</div>' +
         '<div class="card"><h3 style="margin-top:0">明日 ' + fmtD(r.tomorrow) + '（' + r.tomorrowList.length + ' 件）</h3>' + bookingTable(r.tomorrowList) + '</div>' +
         '<div class="card"><h3 style="margin-top:0">朝の確認（対応が要るもの。30日分） <a class="btn ghost small" href="#logs">すべてのログ</a></h3>' + att + '</div>' +
-        regf +
         '<div class="card"><h3 style="margin-top:0">日次処理の記録（リマインド・固定枠・月初の付与など。毎朝の送信時刻に自動で走ります）</h3>' + runs + '</div>';
       if ($('#retry')) $('#retry').onclick = function () { busy($('#retry'), true); api('sync.retry').then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); pageHome(); }); };
+    });
+  }
+
+  // ---------- 初回登録（確認待ち・最近の登録。docs/touroku-kae.md 2.4。2026-10-01） ----------
+  function pageRegistrations() {
+    var head = '<h2>初回登録 <span class="sub">スクールの確認待ちと、最近 LINE を紐付けた生徒</span></h2>';
+    var v = shell(head + '<div class="loading">読み込み中…</div>');
+    api('registrations.list').then(function (r) {
+      if (!v.isConnected) return;
+      if (!r.ok) { v.innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+      var pend = r.pending.length ? r.pending.map(function (p) {
+        var cands = p.candidates.length ? '<table class="tbl"><thead><tr><th>生徒</th><th>フリガナ</th><th>店舗</th><th>固定の曜日</th><th>LINE</th><th>候補の理由</th><th></th></tr></thead><tbody>' + p.candidates.map(function (c) {
+          return '<tr><td class="nowrap"><a href="#students?id=' + esc(c.id) + '">' + esc(c.id) + ' ' + esc(c.name) + '</a>' + (c.status !== '在籍' ? ' <span class="tag orange">' + esc(c.status) + '</span>' : '') + '</td><td class="nowrap">' + esc(c.kana) + '</td>' +
+            '<td class="nowrap">' + esc(c.store) + (c.store !== p.store ? ' <span class="tag yellow">入力と違う</span>' : '') + '</td><td>' + esc(c.fixed.join('・') || '—') + '</td>' +
+            '<td class="nowrap">' + (c.linkedHere ? '<span class="tag">この LINE</span>' : c.linked ? '<span class="tag red">別の LINE</span>' : '未連携') + '</td><td class="small">' + esc(c.why) + '</td>' +
+            '<td class="actions"><button type="button" class="btn small ap" data-r="' + p.id + '" data-s="' + esc(c.id) + '">この生徒で承認</button></td></tr>';
+        }).join('') + '</tbody></table>' : '<div class="muted">名簿に近い生徒が見つかりません</div>';
+        return '<div class="card" data-r="' + p.id + '"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div>' +
+          '<div class="small muted">' + fmtDT(p.at) + '　<span class="tag yellow">' + esc(p.reason) + '</span></div>' +
+          '<div style="font-size:16px;margin:4px 0"><b>' + esc(p.kana) + '</b>　' + esc(p.family + ' ' + p.given) + '</div>' +
+          '<div class="small">電話 ' + esc(p.phone) + '　教室 ' + esc(p.store) + '　通い方 ' + esc(p.attend) + (p.weekdays.length ? '（' + esc(p.weekdays.join('・')) + '）' : '') + '</div></div>' +
+          '<div class="row" style="gap:6px"><input type="text" class="sid" placeholder="生徒ID（S0123）" style="width:140px"><button type="button" class="btn small sub byid" data-r="' + p.id + '">ID で承認</button>' +
+          '<button type="button" class="btn small sub addap" data-r="' + p.id + '">名簿に追加して承認</button><button type="button" class="btn small danger rej" data-r="' + p.id + '">却下</button></div></div>' +
+          '<div style="margin-top:8px">' + cands + '</div></div>';
+      }).join('') : '<div class="card muted">確認待ちはありません</div>';
+      var rec = r.recent.length ? '<table class="tbl"><thead><tr><th>連携日</th><th>生徒</th><th>フリガナ</th><th>名簿の店舗</th><th>生徒が入れた名前・教室</th><th>方法</th><th></th></tr></thead><tbody>' + r.recent.map(function (x) {
+        return '<tr><td class="nowrap">' + fmtD(x.linkedOn) + '</td><td class="nowrap"><a href="#students?id=' + esc(x.id) + '">' + esc(x.id) + ' ' + esc(x.name) + '</a></td><td class="nowrap">' + esc(x.kana) + '</td><td class="nowrap">' + esc(x.store) + '</td>' +
+          '<td class="small">' + (x.input ? esc(x.input.name) + '・' + esc(x.input.store) + (x.storeDiffers ? ' <span class="tag yellow">店舗が名簿と違う</span>' : '') : '—') + '</td><td class="small nowrap">' + esc(x.how) + '</td>' +
+          '<td class="actions"><button type="button" class="btn small ghost unl" data-s="' + esc(x.id) + '" data-n="' + esc(x.name) + '">紐付けを解除</button></td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="muted">ありません</div>';
+      v.innerHTML = head +
+        '<h3>確認待ち（' + r.pending.length + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まらなかった登録です。候補から選んで承認すると、その生徒さんに LINE が紐付き、入力の電話番号が名簿に入ります。生徒さんは次に LINE を開いたときから使えます（通知は送りません）。</div>' + pend +
+        '<h3 style="margin-top:20px">最近30日に登録した人（' + r.recent.length + ' 人）</h3><div class="muted small" style="margin-bottom:8px">フリガナだけで紐付くので、心当たりのない登録や、名前・教室が名簿と合わないものは「紐付けを解除」してください（週に1回の確認を目安に）。</div><div class="card">' + rec + '</div>';
+      var regOf = function (rid) { return r.pending.find(function (p) { return p.id === Number(rid); }); };
+      var approve = function (rid, sid, replace) {
+        return api('registrations.approve', { id: rid, studentId: sid, replace: !!replace }).then(function (x) {
+          if (!x.ok && x.code === 'linked') {
+            return confirmBox('別の LINE から付け替え', x.error + '\nこの申し込みの LINE に付け替えますか？', '付け替える', true).then(function (yes) { if (yes) return approve(rid, sid, true); });
+          }
+          toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); if (x.ok) pageRegistrations();
+        });
+      };
+      $$('.ap', v).forEach(function (b) { b.onclick = function () { approve(b.dataset.r, b.dataset.s); }; });
+      $$('.byid', v).forEach(function (b) { b.onclick = function () { var sid = $('.sid', b.closest('.card')).value.trim().toUpperCase(); if (!sid) { toast('生徒ID を入れてください', 'err'); return; } approve(b.dataset.r, sid); }; });
+      $$('.rej', v).forEach(function (b) { b.onclick = function () {
+        confirmBox('却下', 'この登録を却下します。生徒さんの画面は、次に開いたとき入力画面に戻り、お問い合わせを案内します。', '却下する', true).then(function (yes) {
+          if (yes) api('registrations.reject', { id: b.dataset.r }).then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); pageRegistrations(); });
+        });
+      }; });
+      $$('.addap', v).forEach(function (b) { b.onclick = function () {
+        var p = regOf(b.dataset.r);
+        // 新規登録の画面を入力内容で埋めて開く。保存できたら、その生徒で承認する
+        studentDialog(null, function (res) { if (res && res.ok && res.studentId) approve(p.id, res.studentId); },
+          { family: p.family, given: p.given, kana: p.kana.replace(/[\s　]/g, ''), phone: p.phone, store: p.store });
+      }; });
+      $$('.unl', v).forEach(function (b) { b.onclick = function () {
+        confirmBox('紐付けを解除', b.dataset.n + ' さんの LINE の紐付けを解除します。\n生徒さんは次に LINE を開いたときに初回登録をやり直します。', '解除する', true).then(function (yes) {
+          if (yes) api('students.unlinkLine', { studentId: b.dataset.s }).then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); pageRegistrations(); });
+        });
+      }; });
     });
   }
 
@@ -210,14 +269,15 @@
     if (q.id) studentDialog(q.id, load);
   }
 
-  function studentDialog(id, onDone) {
+  /** prefill：新規のときの初期値（初回登録の「名簿に追加して承認」から。2026-10-01）。onDone(保存の応答) */
+  function studentDialog(id, onDone, prefill) {
     var me = S.me, tAct = me.teachers.filter(function (t) { return t.active; });
     var draw = function (data) {
-      var s = data.student || { status: '在籍', eiken: '未取得', joinedOn: today(), ngWeekdays: [], timebands: [], preferredTeachers: [], monthlyCount: '' };
+      var s = data.student || Object.assign({ status: '在籍', eiken: '未取得', joinedOn: today(), ngWeekdays: [], timebands: [], preferredTeachers: [], monthlyCount: '' }, prefill || {});
       var isNew = !id;
       var body = '<form class="form" id="sf">' +
         f('姓', '<input type="text" name="family" value="' + esc(s.family) + '" required>') + f('名', '<input type="text" name="given" value="' + esc(s.given) + '" required>') +
-        f('フリガナ（姓名続けて）', '<input type="text" name="kana" value="' + esc(s.kana) + '"><div class="hint">ひらがな・半角カナはカタカナに直して保存します</div>') + f('電話番号', '<input type="text" name="phone" value="' + esc(s.phone) + '"><div class="hint">ハイフンなしで保存。兄弟で同じ番号も可</div>') +
+        f('フリガナ（姓名続けて）', '<input type="text" name="kana" value="' + esc(s.kana) + '"><div class="hint">ひらがな・半角カナはカタカナに直して保存します</div>') + f('電話番号', '<input type="text" name="phone" value="' + esc(s.phone) + '"><div class="hint">任意。生徒さんが LINE の初回登録で入れた番号が入ります。ハイフンなしで保存</div>') +
         f('店舗', '<select name="store">' + opts(me.stores.filter(function (x) { return x.active || x.name === s.store; }).map(function (x) { return x.name; }), s.store, null, null, '選んでください') + '</select>') +
         f('コース', '<select name="course" id="course">' + opts(me.courses.filter(function (x) { return x.active || x.name === s.course; }), s.course, function (c) { return c.name; }, function (c) { return c.name; }, '選んでください') + '</select>') +
         f('月の回数', '<input type="number" name="monthlyCount" min="1" value="' + esc(s.monthlyCount) + '"><div class="hint">コースを選ぶと初期値が入ります</div>') + f('使用教材', '<input type="text" name="textbook" value="' + esc(s.textbook) + '">') +
@@ -272,7 +332,7 @@
                 busy($('.save', bg), false);
                 if (!r.ok) { showMsg(bg, r.error, 'err'); return; }
                 toast(r.message); if (r.warnings && r.warnings.length) showMsg(bg, r.warnings.join('\n'), 'warn');
-                if (onDone) onDone();
+                if (onDone) onDone(r);
                 if (isNew || !(r.warnings && r.warnings.length)) close();
               });
             };
