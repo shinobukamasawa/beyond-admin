@@ -194,7 +194,7 @@
         return '<div class="card" data-r="' + p.id + '"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div>' +
           '<div class="small muted">' + fmtDT(p.at) + '　<span class="tag yellow">' + esc(p.reason) + '</span>　LINE：' + esc(p.lineName || '（表示名なし）') + '</div>' +
           '<div style="font-size:16px;margin:4px 0"><b>' + esc(p.kana) + '</b>　' + esc(p.family + ' ' + p.given) + '</div>' +
-          '<div class="small">電話 ' + esc(p.phone) + '</div>' + extra + '</div>' +
+          extra + '</div>' +
           '<div class="row" style="gap:6px"><input type="text" class="sid" placeholder="生徒ID（S0123）" style="width:140px"><button type="button" class="btn small sub byid" data-r="' + p.id + '">ID で承認</button>' +
           '<button type="button" class="btn small sub addap" data-r="' + p.id + '">名簿に追加して承認</button><button type="button" class="btn small danger rej" data-r="' + p.id + '">却下</button></div></div>' +
           '<div style="margin-top:8px">' + cands + '</div></div>';
@@ -207,7 +207,7 @@
           '<td class="actions">' + (x.stillLinked ? '<button type="button" class="btn small ghost unl" data-s="' + esc(x.studentId) + '" data-r="' + x.id + '" data-n="' + esc(x.name) + '">紐付けを解除</button>' : '') + '</td></tr>';
       }).join('') + '</tbody></table>' : '<div class="muted">ありません</div>';
       v.innerHTML = head +
-        '<h3>確認待ち（' + r.pending.length + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まらなかった登録です（同じフリガナが2人以上・名簿にない・別の LINE で登録済み）。候補から選んで承認すると、その生徒さんに LINE が紐付き、入力の電話番号が名簿に入ります。生徒さんは次に LINE を開いたときから使えます（通知は送りません）。</div>' + pend +
+        '<h3>確認待ち（' + r.pending.length + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まらなかった登録です（同じフリガナが2人以上・名簿にない・別の LINE で登録済み）。候補から選んで承認すると、その生徒さんに LINE が紐付きます。生徒さんは次に LINE を開いたときから使えます（通知は送りません）。</div>' + pend +
         '<h3 style="margin-top:20px">新規登録（未確認 ' + r.uncheckedCount + ' 件）</h3><div class="muted small" style="margin-bottom:8px">フリガナで1人に決まって、その場で登録された生徒さんです（登録は止めていません）。LINE の表示名と紐付いた生徒さんを見比べて、合っていれば「確認済み」にチェック。心当たりがなければ「紐付けを解除」。未確認のものは日数に関係なく残り、確認済みは30日で消えます。</div><div class="card">' + rec + '</div>';
       var approve = function (rid, sid, replace) {
         return api('registrations.approve', { id: rid, studentId: sid, replace: !!replace }).then(function (x) {
@@ -228,7 +228,7 @@
         var p = r.pending.find(function (x) { return x.id === Number(b.dataset.r); });
         // 新規登録の画面を入力内容で埋めて開く。保存できたら、その生徒で承認する
         studentDialog(null, function (res) { if (res && res.ok && res.studentId) approve(p.id, res.studentId); },
-          { family: p.family, given: p.given, kana: p.kana.replace(/[\s　]/g, ''), phone: p.phone });
+          { family: p.family, given: p.given, kana: p.kana.replace(/[\s　]/g, '') });
       }; });
       $$('.chk', v).forEach(function (c) { c.onchange = function () {
         api('registrations.check', { id: c.dataset.id, checked: c.checked }).then(function (x) { if (!x.ok) { toast(x.error, 'err'); c.checked = !c.checked; return; } pageRegistrations(); });
@@ -245,7 +245,7 @@
   function pageStudents() {
     var q = S.query;
     var v = shell('<h2>生徒 <span class="sub">名簿の登録・編集、LINE 連携、回数の調整</span></h2>' +
-      '<div class="toolbar"><input type="search" id="q" placeholder="氏名・フリガナ・電話番号・生徒ID" value="' + esc(q.q || '') + '" style="width:260px">' +
+      '<div class="toolbar"><input type="search" id="q" placeholder="氏名・フリガナ・生徒ID" value="' + esc(q.q || '') + '" style="width:260px">' +
       '<select id="status"><option value="">在籍状況：すべて</option>' + opts(['在籍', '休会', '退会'], q.status || '') + '</select>' +
       '<select id="store"><option value="">店舗：すべて</option>' + opts(S.me.stores.map(function (s) { return s.name; }), q.store || '') + '</select>' +
       '<button type="button" class="btn sub" id="search">検索</button><span class="grow"></span><button type="button" class="btn sub" id="xlsx">Excel に出す</button><button type="button" class="btn" id="new">＋ 新規登録</button></div><div id="list" class="loading">読み込み中…</div>');
@@ -256,9 +256,9 @@
         if (!v.isConnected) return;
         if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
         last = r.students;
-        $('#list').innerHTML = r.students.length ? '<table class="tbl"><thead><tr><th>生徒ID</th><th>氏名</th><th>フリガナ</th><th>電話番号</th><th>店舗</th><th>コース</th><th>在籍</th><th>残り／先使い</th><th>固定枠</th><th>LINE</th><th>印</th></tr></thead><tbody>' +
+        $('#list').innerHTML = r.students.length ? '<table class="tbl"><thead><tr><th>生徒ID</th><th>氏名</th><th>フリガナ</th><th>店舗</th><th>コース</th><th>在籍</th><th>残り／先使い</th><th>固定枠</th><th>LINE</th><th>印</th></tr></thead><tbody>' +
           r.students.map(function (s) {
-            return '<tr class="click ' + (s.status === '在籍' ? '' : 'dim') + '" data-id="' + esc(s.id) + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(s.family + ' ' + s.given) + '</td><td class="nowrap">' + esc(s.kana) + (s.kana2 ? '<br>' + esc(s.kana2) : '') + '</td><td class="nowrap">' + esc(s.phone) + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.course) + '</td><td>' + esc(s.status) + '</td>' +
+            return '<tr class="click ' + (s.status === '在籍' ? '' : 'dim') + '" data-id="' + esc(s.id) + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(s.family + ' ' + s.given) + '</td><td class="nowrap">' + esc(s.kana) + (s.kana2 ? '<br>' + esc(s.kana2) : '') + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.course) + '</td><td>' + esc(s.status) + '</td>' +
               '<td class="num">' + s.remaining + '／' + s.advance + '</td><td class="small">' + esc(fixedText(s)) + '</td><td class="small">' + (s.lineLinked ? '連携済 ' + esc(s.lineLinkedOn) + (s.lineLinked2 ? '<br>2つ目 ' + esc(s.lineLinkedOn2) : '') : '<span class="muted">未連携</span>') + '</td><td>' + tags(s.flags) + '</td></tr>';
           }).join('') + '</tbody></table><div class="muted small" style="padding:6px">' + r.students.length + ' 人</div>' : '<div class="muted" style="padding:8px">該当する生徒がいません</div>';
         $$('tr.click', $('#list')).forEach(function (tr) { tr.onclick = function () { studentDialog(tr.dataset.id, load); }; });
@@ -268,8 +268,8 @@
     $('#status').onchange = load; $('#store').onchange = load;
     $('#new').onclick = function () { studentDialog('', load); };
     $('#xlsx').onclick = function () {
-      var head = ['生徒ID', '姓', '名', 'フリガナ', 'もう1人のフリガナ', '電話番号', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
-      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.kana2 || '', s.phone, s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), fixedText(s), s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
+      var head = ['生徒ID', '姓', '名', 'フリガナ', 'もう1人のフリガナ', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
+      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.kana2 || '', s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), fixedText(s), s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
       xlsx('ビヨンド_名簿_' + today() + '.xlsx', [{ name: '名簿', rows: [['出力日時', fmtNow()], []].concat([head], rows) }], '名簿', rows.length, '');
     };
     load();
@@ -284,7 +284,7 @@
       var isNew = !id;
       var body = '<form class="form" id="sf">' +
         f('姓', '<input type="text" name="family" value="' + esc(s.family) + '" required>') + f('名', '<input type="text" name="given" value="' + esc(s.given) + '" required>') +
-        f('フリガナ（姓名続けて）', '<input type="text" name="kana" value="' + esc(s.kana) + '"><div class="hint">ひらがな・半角カナはカタカナに直して保存します</div>') + f('電話番号', '<input type="text" name="phone" value="' + esc(s.phone) + '"><div class="hint">任意。生徒さんが LINE の初回登録で入れた番号が入ります。ハイフンなしで保存</div>') +
+        f('フリガナ（姓名続けて）', '<input type="text" name="kana" value="' + esc(s.kana) + '"><div class="hint">ひらがな・半角カナはカタカナに直して保存します</div>') +
         '<div class="field full"><label>もう1人のフリガナ（ペアのときだけ）</label><input type="text" name="kana2" value="' + esc(s.kana2 || '') + '" style="max-width:320px"><div class="hint">ペア（2人で1つの予約）は、お二人を名簿の1行にします。名は「Aoi・Kanon」のように2人分、コースは「ペア45分」か「ペア60分」。LINE の初回登録は、どちらのフリガナでも当たります。別のご家庭どうしのペアは、LINE を2つまで連携できます</div></div>' +
         f('店舗', '<select name="store">' + opts(me.stores.filter(function (x) { return x.active || x.name === s.store; }).map(function (x) { return x.name; }), s.store, null, null, '選んでください') + '</select>') +
         f('コース', '<select name="course" id="course">' + opts(me.courses.filter(function (x) { return x.active || x.name === s.course; }), s.course, function (c) { return c.name; }, function (c) { return c.name; }, '選んでください') + '</select>') +
@@ -623,7 +623,7 @@
     var me = S.me, tAct = me.teachers.filter(function (t) { return t.active; });
     openModal({ title: b ? '予約の日時変更　' + b.id : '予約を追加', sticky: true,
       body: (b ? '<div class="msg info">' + esc(describe(b)) + '</div>' : '') + '<form class="form" id="bf">' +
-        (b ? '' : '<div class="field full"><label>生徒（氏名・フリガナ・電話番号で検索）</label><div class="row"><input type="text" id="sq" placeholder="検索して選ぶ" style="flex:1"><select name="studentId" id="sid" style="flex:2"><option value="">検索してください</option></select></div><div class="hint" id="sinfo"></div></div>') +
+        (b ? '' : '<div class="field full"><label>生徒（氏名・フリガナ・生徒ID で検索）</label><div class="row"><input type="text" id="sq" placeholder="検索して選ぶ" style="flex:1"><select name="studentId" id="sid" style="flex:2"><option value="">検索してください</option></select></div><div class="hint" id="sinfo"></div></div>') +
         '<div class="field"><label>先生</label><select name="teacherId" id="tid">' + opts(tAct, b ? b.teacherId : '', function (t) { return t.name; }, function (t) { return t.id; }, '選んでください') + '</select></div>' +
         '<div class="field"><label>日付</label><input type="date" name="date" id="date" value="' + esc(b ? b.date : today()) + '" min="' + today() + '"></div>' +
         '<div class="field"><label>開始時刻</label><select name="start" id="start">' + timeOptions(b ? hm(b.start) : '', me.stepMinutes, 540, 1380) + '</select><div class="hint">終了は' + (b ? '元の予約と同じ長さ' : '生徒のコースの時間') + 'で決まります</div></div>' +
