@@ -97,7 +97,7 @@
   function showMsg(bg, text, kind) { var m = $('.fmsg', bg); if (!m) { m = document.createElement('div'); m.className = 'fmsg'; $('.mb', bg).prepend(m); } m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ''; if (text) $('.mb', bg).scrollIntoView({ block: 'start' }); }
 
   // ---------- 枠組みとログイン ----------
-  var PAGES = [['home', 'ホーム'], ['registrations', '初回登録'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
+  var PAGES = [['home', 'ホーム'], ['registrations', 'LINE連携'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
   function shell(inner) {
     var nav = PAGES.map(function (p) { return '<a href="#' + p[0] + '" class="' + (S.page === p[0] ? 'on' : '') + '">' + p[1] + '</a>'; }).join('');
     app.innerHTML = '<div class="topbar"><div class="brand">' + esc(CFG.schoolName) + ' 予約管理' + (CFG.envLabel ? '<span class="env">' + esc(CFG.envLabel) + '</span>' : '') + '</div><nav>' + nav + '</nav>' +
@@ -161,8 +161,8 @@
       var sync = r.sync.pending ? '<div class="msg warn">カレンダーへの書き出しが <b>' + r.sync.pending + ' 件</b> 待ちです（2分おきに自動で再試行します）。 <button type="button" class="btn small sub" id="retry">今すぐ再試行</button>' +
         (r.sync.failing.length ? '<br>失敗が続いているもの：' + r.sync.failing.map(function (f) { return esc(f.bookingId) + '（' + esc(f.target) + '・' + f.attempts + '回）' + esc(f.error); }).join('／') : '') + '</div>' : '';
       var runs = (r.jobRuns || []).length ? '<table class="tbl"><thead><tr><th>日付</th><th>開始</th><th>終了</th><th>結果</th></tr></thead><tbody>' + r.jobRuns.map(function (j) { return '<tr><td class="nowrap">' + fmtD(j.date) + '</td><td class="nowrap">' + fmtDT(j.startedAt) + '</td><td class="nowrap">' + (j.finishedAt ? fmtDT(j.finishedAt) : '<span class="tag yellow">実行中</span>') + '</td><td class="small">' + esc(j.result) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">まだ走っていません</div>';
-      var regf = (r.registrationsPending ? '<div class="msg warn">初回登録の確認待ちが <b>' + r.registrationsPending + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で承認か却下をしてください。</div>' : '') +
-        (r.registrationsUnchecked ? '<div class="msg info">未確認の新規登録が <b>' + r.registrationsUnchecked + ' 件</b> あります。<a href="#registrations">初回登録の画面</a>で、LINE の表示名と生徒さんを見比べて「確認済み」にしてください。</div>' : '');
+      var regf = (r.registrationsPending ? '<div class="msg warn">LINE の初回登録の確認待ちが <b>' + r.registrationsPending + ' 件</b> あります。<a href="#registrations">LINE連携の画面</a>で承認か却下をしてください。</div>' : '') +
+        (r.registrationsUnchecked ? '<div class="msg info">未確認の新規登録が <b>' + r.registrationsUnchecked + ' 件</b> あります。<a href="#registrations">LINE連携の画面</a>で、LINE の表示名と生徒さんを見比べて「確認済み」にしてください。</div>' : '');
       var outside = r.outsideCount ? '<div class="msg warn">先生の出勤時間の外に出ている予約が <b>' + r.outsideCount + ' 件</b> あります。<a href="#bookings">予約の画面</a>で「枠外」の印を確認してください。</div>' : '';
       var att = r.attention.length ? '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.attention.map(function (a) { return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="nowrap">' + esc(a.target) + '</td><td>' + esc(a.message) + '</td></tr>'; }).join('') + '</tbody></table>'
         : '<div class="muted">対応が要るものはありません</div>';
@@ -175,9 +175,9 @@
     });
   }
 
-  // ---------- 初回登録（確認待ち・新規登録の確認。docs/touroku-kae.md 2.4。2026-10-01） ----------
+  // ---------- LINE連携（生徒の初回登録の確認待ち・新規登録の確認。docs/touroku-kae.md 2.4。2026-10-01。ページ名は 2026-10-16 に「初回登録」→「LINE連携」：生徒の編集と混同するため） ----------
   function pageRegistrations() {
-    var head = '<h2>初回登録 <span class="sub">スクールの確認待ちと、新しく LINE を紐付けた生徒の確認</span></h2>';
+    var head = '<h2>LINE連携 <span class="sub">生徒さんの LINE の初回登録：スクールの確認待ちと、新しく LINE を紐付けた生徒の確認</span></h2>';
     var v = shell(head + '<div class="loading">読み込み中…</div>');
     api('registrations.list').then(function (r) {
       if (!v.isConnected) return;
@@ -268,8 +268,9 @@
     $('#status').onchange = load; $('#store').onchange = load;
     $('#new').onclick = function () { studentDialog('', load); };
     $('#xlsx').onclick = function () {
-      var head = ['生徒ID', '姓', '名', 'フリガナ', 'もう1人のフリガナ', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '曜日NG', '希望時間帯', '希望の先生', '固定枠', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
-      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.kana2 || '', s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.ngWeekdays.join('、'), s.timebands.join('、'), s.preferredTeachers.map(teacherName).join('、'), fixedText(s), s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
+      // 曜日NG・希望時間帯は 2026-10-16 に画面から外した（Excel からも）
+      var head = ['生徒ID', '姓', '名', 'フリガナ', 'もう1人のフリガナ', '店舗', 'コース', '月の回数', '使用教材', '英検取得級', '在籍状況', '申請日', '申請区分', '適用月', '在籍状況変更日', '入会日', '希望の先生', '固定枠', '備考', '残り回数', '先使い回数', '回数付与済み月', 'LINE連携日'];
+      var rows = last.map(function (s) { return [s.id, s.family, s.given, s.kana, s.kana2 || '', s.store, s.course, s.monthlyCount, s.textbook, s.eiken, s.status, s.requestDate, s.requestKind, s.applyMonth, s.statusChangedOn, s.joinedOn, s.preferredTeachers.map(teacherName).join('、'), fixedText(s), s.note, s.remaining, s.advance, s.grantedMonth, s.lineLinkedOn]; });
       xlsx('ビヨンド_名簿_' + today() + '.xlsx', [{ name: '名簿', rows: [['出力日時', fmtNow()], []].concat([head], rows) }], '名簿', rows.length, '');
     };
     load();
@@ -293,9 +294,8 @@
         f('在籍状況', isNew ? '<input type="text" value="在籍（新規は固定）" readonly><input type="hidden" name="status" value="在籍">' : '<select name="status" id="status">' + opts(['在籍', '休会', '退会'], s.status) + '</select><div class="hint">通常の休会・退会・復帰は下の「申請」に入れてください（適用月の1日に自動で切り替わります）</div>') +
         f('申請日／申請区分', '<div class="row"><input type="date" name="requestDate" id="requestDate" value="' + esc(s.requestDate) + '" style="width:160px"><select name="requestKind" id="requestKind" style="width:110px">' + opts(['休会', '退会', '復帰'], s.requestKind, null, null, '（なし）') + '</select></div>') +
         f('適用月', '<input type="month" name="applyMonth" id="applyMonth" value="' + esc(s.applyMonth) + '"><div class="hint" id="applyHint">休会・退会は申請日から自動計算（' + me.cutoffDay + '日まで→翌月、' + (me.cutoffDay + 1) + '日以降→翌々月）。復帰は手で入れます</div>') +
-        '<div class="field full"><label>曜日NG</label>' + checks('ngWeekdays', me.lists.weekdays, s.ngWeekdays) + '</div>' +
-        '<div class="field full"><label>希望時間帯</label>' + checks('timebands', me.lists.timebands, s.timebands) + '</div>' +
-        '<div class="field full"><label>希望の先生</label>' + checks('preferredTeachers', tAct, s.preferredTeachers, function (t) { return t.name; }, function (t) { return t.id; }) + '</div>' +
+        // 曜日NG・希望時間帯は 2026-10-16 の社長確認で画面から外した（DB の列は残す。送らなければ API は触らない）。希望の先生は生徒の予約画面の最初の選択に使うので残す
+        '<div class="field full"><label>希望の先生</label>' + checks('preferredTeachers', tAct, s.preferredTeachers, function (t) { return t.name; }, function (t) { return t.id; }) + '<div class="hint">生徒さんの予約画面で、最初から選ばれている先生（固定枠の先生も最初から選ばれます）。生徒さんは画面で変えられます</div></div>' +
         '<div class="field full"><label>固定枠（複数可。対象週は「第」の数字にチェック、空＝毎週）</label><div id="fixedRows"></div><button type="button" class="btn sub" id="fixedAdd">＋ 固定枠を足す</button>' +
         '<div class="hint">曜日・時間・先生の3つで1本。隔週なら第1・3のように。連続の2枠は2本に分けて入れます。変更は翌月分から反映されます</div></div>' +
         '<div class="field full"><label>備考</label><textarea name="note">' + esc(s.note) + '</textarea></div></form>' +
@@ -611,7 +611,7 @@
         });
       });
     } else if (act === 'absent') {
-      confirmBox('期限後欠席にする', describe(b) + '\n\n期限後欠席にします。回数は消化のままで、カレンダーの予定に「（欠席）」が付きます。よろしいですか？', '期限後欠席にする', true).then(function (yes) { if (yes) api('bookings.absent', { bookingId: b.id }).then(done); });
+      confirmBox('期限後欠席にする', describe(b) + '\n\n期限後欠席にします。回数は消化のままで、カレンダーの予定は残り、題名の頭に「キャンセル」が付きます（先生が見て分かるように）。よろしいですか？', '期限後欠席にする', true).then(function (yes) { if (yes) api('bookings.absent', { bookingId: b.id }).then(done); });
     } else if (act === 'refund') {
       promptBox('回数を戻す（特例）', describe(b) + '\n\n回数を1回戻します。電車の遅延・天災などの特例のときだけ使います。', '理由（必須。例：電車遅延、台風）').then(function (reason) { if (reason === null) return; api('bookings.refund', { bookingId: b.id, reason: reason }).then(done); });
     } else if (act === 'close') {
