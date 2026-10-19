@@ -98,13 +98,29 @@
 
   // ---------- 枠組みとログイン ----------
   var PAGES = [['home', 'ホーム'], ['registrations', 'LINE連携'], ['students', '生徒'], ['teachers', '先生'], ['shifts', 'シフト'], ['bookings', '予約'], ['results', '実績'], ['settings', '設定'], ['logs', 'ログ'], ['staff', 'スタッフ']];
+  // スマホで使うページ（2026-10-19 B-3）：ホーム・LINE連携・生徒。ほかは狭い幅で「パソコンでご覧ください」の帯を出す（中身は隠さない）
+  var PHONE_PAGES = ['home', 'registrations', 'students'];
+  function isNarrow() { return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
   function shell(inner) {
     var nav = PAGES.map(function (p) { return '<a href="#' + p[0] + '" class="' + (S.page === p[0] ? 'on' : '') + '">' + p[1] + '</a>'; }).join('');
-    app.innerHTML = '<div class="topbar"><div class="brand">' + esc(CFG.schoolName) + ' 予約管理' + (CFG.envLabel ? '<span class="env">' + esc(CFG.envLabel) + '</span>' : '') + '</div><nav>' + nav + '</nav>' +
-      '<div class="who">' + esc(S.me.staff.name || S.me.staff.email) + ' <button type="button" id="logout">ログアウト</button></div></div><div class="page" id="view">' + inner + '</div>';
+    var note = PHONE_PAGES.indexOf(S.page) < 0 ? '<div class="pc-note msg info small">この画面はパソコンでご覧ください（スマホでは表が見づらいことがあります）。スマホで使えるのは、ホーム・LINE連携・生徒です。</div>' : '';
+    app.innerHTML = '<div class="topbar"><div class="brand">' + esc(CFG.schoolName) + ' 予約管理' + (CFG.envLabel ? '<span class="env">' + esc(CFG.envLabel) + '</span>' : '') + '</div>' +
+      '<button type="button" class="navbtn" id="navbtn" aria-label="メニュー">☰</button><nav>' + nav + '</nav>' +
+      '<div class="who">' + esc(S.me.staff.name || S.me.staff.email) + ' <button type="button" id="logout">ログアウト</button></div></div><div class="page" id="view">' + note + inner + '</div>';
     $('#logout').onclick = function () { sb.auth.signOut(); };
+    $('#navbtn').onclick = function () { $('.topbar').classList.toggle('open'); };   // スマホ幅だけ見える（CSS）
     return $('#view');
   }
+  /** スマホ幅（2026-10-19）：表の thead の見出しを各セルの data-label に写し、CSS が 1 件ずつのカードに並べ替える（画面の描き直しのたびに自動で） */
+  function cardLabels(root) {
+    $$('table.tbl', root).forEach(function (t) {
+      if (t.classList.contains('cards')) return;
+      var heads = $$(':scope > thead th', t).map(function (th) { return th.textContent.trim(); });
+      $$(':scope > tbody > tr', t).forEach(function (tr) { $$(':scope > td', tr).forEach(function (td, i) { if (heads[i]) td.setAttribute('data-label', heads[i]); }); });
+      t.classList.add('cards');
+    });
+  }
+  new MutationObserver(function () { cardLabels(document); }).observe(document.body, { childList: true, subtree: true });
   function renderLogin(msg) {
     var dev = CFG.devLogin ? '<div class="card" style="text-align:left;margin-top:24px"><div class="muted small">開発用：メールとパスワードでログイン（本番にはありません）</div><div class="field"><label>メール</label><input type="email" id="dev-email"></div><div class="field"><label>パスワード</label><input type="password" id="dev-pass"></div><button type="button" class="btn sub" id="dev-login">ログイン</button></div>' : '';
     app.innerHTML = '<div class="login"><h1>' + esc(CFG.schoolName) + ' 予約管理</h1><div class="note">運営のスタッフの Google アカウントでログインしてください。</div>' + (msg ? '<div class="msg err">' + esc(msg) + '</div>' : '') +
@@ -166,12 +182,16 @@
       var outside = r.outsideCount ? '<div class="msg warn">先生の出勤時間の外に出ている予約が <b>' + r.outsideCount + ' 件</b> あります。<a href="#bookings">予約の画面</a>で「枠外」の印を確認してください。</div>' : '';
       var att = r.attention.length ? '<table class="tbl"><thead><tr><th>日時</th><th>処理</th><th>対象</th><th>内容</th></tr></thead><tbody>' + r.attention.map(function (a) { return '<tr><td class="nowrap">' + fmtDT(a.at) + '</td><td class="nowrap">' + esc(a.job) + '</td><td class="nowrap">' + esc(a.target) + '</td><td>' + esc(a.message) + '</td></tr>'; }).join('') + '</tbody></table>'
         : '<div class="muted">対応が要るものはありません</div>';
+      // 今日・明日の行に「期限後欠席」（2026-10-19 B-3：締切が前日 22:00 になり、夜にスマホで印を付けたくなるため）。期限内なら API が止める
+      var homeAct = function (b) { return b.state === '予約中' ? '<button type="button" class="btn small sub act" data-act="absent" data-id="' + esc(b.id) + '">期限後欠席</button>' : ''; };
       v.innerHTML = '<h2>ホーム <span class="sub">' + fmtD(r.today) + '</span></h2>' + sync + outside + regf +
-        '<div class="card"><h3 style="margin-top:0">今日 ' + fmtD(r.today) + '（' + r.todayList.length + ' 件）</h3>' + bookingTable(r.todayList) + '</div>' +
-        '<div class="card"><h3 style="margin-top:0">明日 ' + fmtD(r.tomorrow) + '（' + r.tomorrowList.length + ' 件）</h3>' + bookingTable(r.tomorrowList) + '</div>' +
+        '<div class="card"><h3 style="margin-top:0">今日 ' + fmtD(r.today) + '（' + r.todayList.length + ' 件）</h3>' + bookingTable(r.todayList, { actions: homeAct }) + '</div>' +
+        '<div class="card"><h3 style="margin-top:0">明日 ' + fmtD(r.tomorrow) + '（' + r.tomorrowList.length + ' 件）</h3>' + bookingTable(r.tomorrowList, { actions: homeAct }) + '</div>' +
         '<div class="card"><h3 style="margin-top:0">朝の確認（対応が要るもの。30日分） <a class="btn ghost small" href="#logs">すべてのログ</a></h3>' + att + '</div>' +
         '<div class="card"><h3 style="margin-top:0">日次処理の記録（リマインド・固定枠・月初の付与など。毎朝の送信時刻に自動で走ります）</h3>' + runs + '</div>';
       if ($('#retry')) $('#retry').onclick = function () { busy($('#retry'), true); api('sync.retry').then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); pageHome(); }); };
+      var all = r.todayList.concat(r.tomorrowList);
+      $$('.act', v).forEach(function (btn) { btn.onclick = function () { bookingAction('absent', all.find(function (b) { return b.id === btn.dataset.id; }), pageHome); }; });
     });
   }
 
@@ -201,7 +221,7 @@
       }).join('') : '<div class="card muted">確認待ちはありません</div>';
       var rec = r.recent.length ? '<table class="tbl"><thead><tr><th>確認済み</th><th>登録</th><th>LINE の表示名</th><th></th><th>紐付いた生徒</th><th>フリガナ</th><th>店舗</th><th>生徒が入れた名前</th><th>方法</th><th></th></tr></thead><tbody>' + r.recent.map(function (x) {
         return '<tr class="' + (x.checked ? 'dim' : '') + '"><td><input type="checkbox" class="chk" data-id="' + x.id + '"' + (x.checked ? ' checked' : '') + ' title="' + esc(x.checked ? '確認済み：' + x.checkedBy : '未確認') + '"></td>' +
-          '<td class="nowrap">' + fmtDT(x.at) + '</td><td class="nowrap">' + esc(x.lineName || '（表示名なし）') + '</td><td>→</td>' +
+          '<td class="nowrap">' + fmtDT(x.at) + '</td><td class="nowrap">' + esc(x.lineName || '（表示名なし）') + '</td><td class="arrow">→</td>' +
           '<td class="nowrap"><a href="#students?id=' + esc(x.studentId) + '">' + esc(x.studentId) + ' ' + esc(x.name) + '</a>' + (x.stillLinked ? '' : ' <span class="tag">解除済み</span>') + '</td><td class="nowrap">' + esc(x.kana) + '</td><td class="nowrap">' + esc(x.store) + '</td>' +
           '<td class="small">' + esc(x.input) + '</td><td class="small nowrap">' + esc(x.how) + '</td>' +
           '<td class="actions">' + (x.stillLinked ? '<button type="button" class="btn small ghost unl" data-s="' + esc(x.studentId) + '" data-r="' + x.id + '" data-n="' + esc(x.name) + '">紐付けを解除</button>' : '') + '</td></tr>';
@@ -261,7 +281,7 @@
             return '<tr class="click ' + (s.status === '在籍' ? '' : 'dim') + '" data-id="' + esc(s.id) + '"><td>' + esc(s.id) + '</td><td class="nowrap">' + esc(s.family + ' ' + s.given) + '</td><td class="nowrap">' + esc(s.kana) + (s.kana2 ? '<br>' + esc(s.kana2) : '') + '</td><td>' + esc(s.store) + '</td><td class="nowrap">' + esc(s.course) + '</td><td>' + esc(s.status) + '</td>' +
               '<td class="num">' + s.remaining + '／' + s.advance + '</td><td class="small">' + esc(fixedText(s)) + '</td><td class="small">' + (s.lineLinked ? '連携済 ' + esc(s.lineLinkedOn) + (s.lineLinked2 ? '<br>2つ目 ' + esc(s.lineLinkedOn2) : '') : '<span class="muted">未連携</span>') + '</td><td>' + tags(s.flags) + '</td></tr>';
           }).join('') + '</tbody></table><div class="muted small" style="padding:6px">' + r.students.length + ' 人</div>' : '<div class="muted" style="padding:8px">該当する生徒がいません</div>';
-        $$('tr.click', $('#list')).forEach(function (tr) { tr.onclick = function () { studentDialog(tr.dataset.id, load); }; });
+        $$('tr.click', $('#list')).forEach(function (tr) { tr.onclick = function () { if (isNarrow()) studentQuickView(tr.dataset.id, load); else studentDialog(tr.dataset.id, load); }; });   // スマホ幅は見るだけの窓（2026-10-19）
       });
     };
     $('#search').onclick = load; $('#q').onkeydown = function (e) { if (e.key === 'Enter') load(); };
@@ -274,7 +294,27 @@
       xlsx('ビヨンド_名簿_' + today() + '.xlsx', [{ name: '名簿', rows: [['出力日時', fmtNow()], []].concat([head], rows) }], '名簿', rows.length, '');
     };
     load();
-    if (q.id) studentDialog(q.id, load);
+    if (q.id) { if (isNarrow()) studentQuickView(q.id, load); else studentDialog(q.id, load); }
+  }
+
+  /** スマホ幅の「見るだけの窓」（2026-10-19 B-3）：氏名・コース・残り回数・固定枠・LINE・これからの予約。できるのは「回数の調整」だけ。名簿の編集はパソコンで */
+  function studentQuickView(id, onDone) {
+    api('students.get', { studentId: id }).then(function (r) {
+      if (!r.ok) { toast(r.error, 'err'); return; }
+      var s = r.student;
+      var kv = function (k, v) { return '<div class="row between" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="muted small">' + esc(k) + '</span><span style="text-align:right">' + v + '</span></div>'; };
+      var lines = (r.lines || []).map(function (l) { return (r.lines.length > 1 ? l.slot + 'つ目 ' : '') + esc(l.linkedOn) + (l.lineName ? '（' + esc(l.lineName) + '）' : ''); }).join('<br>') || (s.lineLinked ? '連携済み ' + esc(s.lineLinkedOn) : '<span class="muted">未連携</span>');
+      var up = (r.upcoming || []).slice(0, 5).map(function (b) { return '<div>' + fmtD(b.date) + ' ' + hm(b.start) + '　' + esc(b.teacherName) + '先生' + (b.online ? '（オンライン）' : '') + '</div>'; }).join('');
+      openModal({ title: s.family + ' ' + s.given + '　' + s.id, size: 'narrow',
+        body: '<div style="margin-bottom:6px">' + esc(s.kana) + (s.kana2 ? '／' + esc(s.kana2) : '') + '　<span class="muted">' + esc(s.store) + '・' + esc(s.course || 'コース確認中') + '</span>' + (s.status !== '在籍' ? ' <span class="tag orange">' + esc(s.status) + '</span>' : '') + '</div>' +
+          kv('残り回数／先使い', '<b style="font-size:18px">' + s.remaining + '</b>／' + s.advance) +
+          kv('月の回数', esc(s.monthlyCount)) + kv('固定枠', esc(fixedText(s)) || '<span class="muted">なし</span>') + kv('LINE', lines) +
+          '<div style="padding:6px 0"><div class="muted small">これからの予約（' + (r.upcoming || []).length + ' 件）</div>' + (up || '<span class="muted">なし</span>') + '</div>' +
+          '<div class="muted small" style="margin-top:6px">名簿の編集（コース・固定枠・LINE の解除など）はパソコンの画面で。ここでは回数の調整だけできます。</div>',
+        left: '<button type="button" class="btn sub adjust">回数の調整</button><a class="btn ghost" href="#bookings?studentId=' + esc(s.id) + '">予約を見る</a>',
+        footer: '<button type="button" class="btn sub close">閉じる</button>',
+        onOpen: function (bg, close) { $('.adjust', bg).onclick = function () { adjustDialog(s, function () { close(); if (onDone) onDone(); studentQuickView(id, onDone); }); }; } });
+    });
   }
 
   /** prefill：新規のときの初期値（初回登録の「名簿に追加して承認」から。2026-10-01）。onDone(保存の応答) */
@@ -508,7 +548,7 @@
       body: '<form class="form" id="wf"><input type="hidden" name="kind" value="' + esc(kind) + '">' +
         '<div class="field full"><label>先生</label><select name="teacherId"' + (isNew ? '' : ' disabled') + '>' + opts(tAct, s.teacherId, function (t) { return t.name; }, function (t) { return t.id; }, '選んでください') + '</select></div>' +
         (kind === '基本' ? '<div class="field"><label>曜日</label><select name="weekday">' + opts(me.lists.weekdays, s.weekday, null, null, '選んでください') + '</select></div>' : '<div class="field"><label>日付</label><input type="date" name="date" value="' + esc(s.date) + '"></div>') +
-        (kind === '休み' ? '<div class="field"><label>休みの範囲</label><select name="allDay" id="allDay"><option value="1"' + (s.allDay || (!isNew && !s.start) ? ' selected' : '') + '>終日</option><option value="0"' + (!(s.allDay || (!isNew && !s.start)) ? ' selected' : '') + '>時間を指定</option></select></div>' : '<div class="field"><label>店舗</label><select name="store">' + opts(me.stores.map(function (x) { return x.name; }), s.store, null, null, '指定なし（担当店舗のどこでも）') + '</select><div class="hint">校舎を移動する先生は「指定なし」。予約の店舗は生徒さんの店舗になり、別の校舎の予約との間は設定の「移動時間」だけ空きます</div></div>') +
+        (kind === '休み' ? '<div class="field"><label>休みの範囲</label><select name="allDay" id="allDay"><option value="1"' + (s.allDay || (!isNew && !s.start) ? ' selected' : '') + '>終日</option><option value="0"' + (!(s.allDay || (!isNew && !s.start)) ? ' selected' : '') + '>時間を指定</option></select></div>' : '<div class="field"><label>店舗</label><select name="store">' + opts(me.stores.map(function (x) { return x.name; }), s.store, null, null, '選んでください') + '</select><div class="hint">必ず店舗を選びます（2026-10-16：校舎間の移動は扱わない。同じ日に校舎をまたぐ先生に当たる生徒さんは、運営が「予約」の「＋ 予約を追加」で入れます）</div></div>') +
         '<div class="field" id="timeRow"><label>開始〜終了</label><div class="row"><select name="start" style="width:110px">' + timeOptions(s.start, me.stepMinutes, 480, 1380) + '</select>〜<select name="end" style="width:110px">' + timeOptions(s.end, me.stepMinutes, 480, 1380) + '</select></div></div>' +
         (kind === '基本' ? '<div class="field"><label>適用開始日（任意）</label><input type="date" name="validFrom" value="' + esc(s.validFrom) + '"><div class="hint">「来月からシフトを変える」を前もって入れるとき</div></div><div class="field"><label>適用終了日（任意）</label><input type="date" name="validTo" value="' + esc(s.validTo) + '"></div>' : '') +
         '<div class="field full"><label>備考</label><input type="text" name="note" value="' + esc(s.note) + '"></div></form>' +
@@ -522,6 +562,7 @@
         $('.save', bg).onclick = function () {
           var d = formData(form); d.teacherId = form.teacherId.value; if (!isNew) d.shiftId = s.id;
           if (d.allDay === '1') { d.start = ''; d.end = ''; } delete d.allDay;
+          if (kind !== '休み' && !d.store) { showMsg(bg, '店舗を選んでください', 'err'); return; }   // 「指定なし」は 2026-10-16 にやめた
           busy($('.save', bg), true);
           api('shifts.save', d).then(function (r) {
             busy($('.save', bg), false);
@@ -628,9 +669,9 @@
         '<div class="field"><label>日付</label><input type="date" name="date" id="date" value="' + esc(b ? b.date : today()) + '" min="' + today() + '"></div>' +
         '<div class="field"><label>開始時刻</label><select name="start" id="start">' + timeOptions(b ? hm(b.start) : '', me.stepMinutes, 540, 1380) + '</select><div class="hint">終了は' + (b ? '元の予約と同じ長さ' : '生徒のコースの時間') + 'で決まります</div></div>' +
         '<div class="field"><label>&nbsp;</label><button type="button" class="btn sub" id="avail">空き確認</button></div>' +
-        '<div class="field full"><label><input type="checkbox" id="online"' + (b && b.online ? ' checked' : '') + '> オンライン（Teams）</label><div class="hint">店舗は生徒の店舗のまま。店舗間の移動時間は見ません。カレンダーの予定とリマインドに「オンライン」と出ます</div></div>' +
+        '<div class="field full"><label><input type="checkbox" id="online"' + (b && b.online ? ' checked' : '') + '> オンライン（Teams）</label><div class="hint">店舗は生徒の店舗のまま。カレンダーの予定とリマインドに「オンライン」と出ます</div></div>' +
         '<div class="field full"><label>その日のその先生の出勤時間と予約</label><div class="avail" id="availBox"><span class="muted">先生と日付を選んで「空き確認」</span></div></div></form>' +
-        '<div class="muted small">' + (b ? '運営の日時変更は変更期限を過ぎていてもできます。元の予約は「振替済」になり、回数は動きません。' : '運営の追加は、生徒の希望条件や受付の締切は見ません。出勤時間の中で、先生・生徒の予約と重ならず、回数が残っていれば入ります。') + '</div>',
+        '<div class="muted small">' + (b ? '運営の日時変更は変更期限を過ぎていてもできます。元の予約は「振替済」になり、回数は動きません。' : '運営の追加は、生徒の希望条件や受付の締切は見ません。出勤時間の中で、先生・生徒の予約と重ならず、回数が残っていれば入ります。生徒さんの店舗と先生のシフトの店舗が違っても入ります（校舎をまたぐ先生の分はここで。注意が出ます）。') + '</div>',
       footer: '<button type="button" class="btn sub close">やめる</button><button type="button" class="btn save">' + (b ? '変更する' : '追加する') + '</button>',
       onOpen: function (bg, close) {
         var form = $('#bf', bg);
@@ -724,14 +765,36 @@
   // ---------- スタッフ（許可リスト。登録は admin だけ） ----------
   function pageStaff() {
     var me = S.me, isAdmin = me.staff.role === 'admin';
-    var v = shell('<h2>スタッフ <span class="sub">運営の画面にログインできる Google アカウント。登録・変更は管理者だけ</span></h2><div id="list" class="loading">読み込み中…</div>' +
+    var v = shell('<h2>スタッフ <span class="sub">運営の画面にログインできる Google アカウントと、確認待ちの通知を受け取る LINE。登録・変更は管理者だけ</span></h2><div id="list" class="loading">読み込み中…</div>' +
       (isAdmin ? '<div class="card"><h3 style="margin-top:0">登録・変更</h3><form class="form" id="sf"><div class="field"><label>Google アカウント（メール）</label><input type="email" name="email"></div><div class="field"><label>名前</label><input type="text" name="name"></div><div class="field"><label>役割</label><select name="role"><option value="staff">スタッフ</option><option value="admin">管理者（スタッフの登録ができる）</option></select></div><div class="field"><label>状態</label><select name="active"><option value="true">有効</option><option value="false">無効（ログインできない）</option></select></div></form><button type="button" class="btn" id="save">保存</button><div class="muted small" style="margin-top:6px">同じメールを入れると上書きです。無効にしたアカウントは、ログインできても「登録されていません」になります。</div></div>' : '<div class="muted">あなたは「スタッフ」の役割です。登録・変更は管理者にお願いしてください。</div>'));
     var load = function () {
       api('staff.list').then(function (r) {
         if (!v.isConnected) return;
         if (!r.ok) { $('#list').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
-        $('#list').innerHTML = '<table class="tbl"><thead><tr><th>メール</th><th>名前</th><th>役割</th><th>状態</th><th>登録</th></tr></thead><tbody>' + r.staff.map(function (x) { return '<tr class="' + (x.active ? (isAdmin ? 'click' : '') : 'dim') + '" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '" data-role="' + esc(x.role) + '" data-active="' + x.active + '"><td>' + esc(x.email) + (x.email === me.staff.email ? ' <span class="tag blue">あなた</span>' : '') + '</td><td>' + esc(x.name) + '</td><td>' + (x.role === 'admin' ? '管理者' : 'スタッフ') + '</td><td>' + (x.active ? '有効' : '無効') + '</td><td class="nowrap small">' + fmtDT(x.createdAt) + '</td></tr>'; }).join('') + '</tbody></table>';
-        if (isAdmin) $$('tr[data-email]', $('#list')).forEach(function (tr) { tr.onclick = function () { var f = $('#sf'); f.email.value = tr.dataset.email; f.name.value = tr.dataset.name; f.role.value = tr.dataset.role; f.active.value = tr.dataset.active; }; });
+        // LINE の列（2026-10-19 B-4 (a)）：確認待ちの通知を受け取る LINE。自分の行に「LINE を紐付ける」、外すのは自分かまたは管理者
+        var lineCell = function (x) {
+          var mine = x.email === me.staff.email;
+          var st = x.lineLinked ? '<span class="tag green">紐付け済み</span> <span class="small">' + fmtDT(x.lineLinkedAt) + (x.lineName ? '（' + esc(x.lineName) + '）' : '') + '</span>' : '<span class="muted small">未</span>';
+          var btn = (mine && !x.lineLinked ? ' <button type="button" class="btn small sub lcode">LINE を紐付ける</button>' : '') + (x.lineLinked && (mine || isAdmin) ? ' <button type="button" class="btn small ghost lunlink" data-email="' + esc(x.email) + '">外す</button>' : '');
+          return st + btn;
+        };
+        $('#list').innerHTML = '<table class="tbl"><thead><tr><th>メール</th><th>名前</th><th>役割</th><th>状態</th><th>LINE（確認待ちの通知）</th><th>登録</th></tr></thead><tbody>' + r.staff.map(function (x) { return '<tr class="' + (x.active ? '' : 'dim') + '" data-email="' + esc(x.email) + '" data-name="' + esc(x.name) + '" data-role="' + esc(x.role) + '" data-active="' + x.active + '"><td>' + esc(x.email) + (x.email === me.staff.email ? ' <span class="tag blue">あなた</span>' : '') + '</td><td>' + esc(x.name) + '</td><td>' + (x.role === 'admin' ? '管理者' : 'スタッフ') + '</td><td>' + (x.active ? '有効' : '無効') + '</td><td>' + lineCell(x) + '</td><td class="nowrap small">' + fmtDT(x.createdAt) + '</td></tr>'; }).join('') + '</tbody></table>' +
+          '<div class="muted small" style="margin-top:6px">生徒さんの LINE の初回登録が「確認待ち」になると、「紐付け済み」の人の LINE に「確認待ちが 1 件あります」と届きます（送信元は設定の「運営通知_送信元」の公式アカウント。先にその公式アカウントを友だち追加しておきます）。</div>';
+        if (isAdmin) $$('tr[data-email] td:first-child', $('#list')).forEach(function (td) { td.style.cursor = 'pointer'; td.onclick = function () { var tr = td.parentNode, f = $('#sf'); f.email.value = tr.dataset.email; f.name.value = tr.dataset.name; f.role.value = tr.dataset.role; f.active.value = tr.dataset.active; }; });
+        $$('.lcode', $('#list')).forEach(function (b) { b.onclick = function () {
+          busy(b, true);
+          api('staff.lineCode').then(function (x) {
+            busy(b, false); if (!x.ok) { toast(x.error, 'err'); return; }
+            var link = (CFG.liffUrl || '') + '?staff=' + x.code;
+            openModal({ title: '自分の LINE を紐付ける', size: 'narrow', sticky: true,
+              body: '<ol style="margin:0 0 8px 18px;padding:0;line-height:1.8"><li>スマホの LINE で、スクールの公式アカウント（設定の「運営通知_送信元」のもの）を<b>友だち追加</b>しておく</li><li>下のリンクを、<b>自分の LINE で開く</b>（リンクをコピーして、自分だけのトーク〔Keep メモ〕などに貼って押す。または右のパソコンから自分の LINE に送る）</li><li>「○○ さんの LINE として紐付けました」と出れば完了。この表に「紐付け済み」と出ます</li></ol>' +
+                '<div class="field"><label>リンク（10分有効。合言葉 ' + esc(x.code) + '）</label><input type="text" id="llink" value="' + esc(link) + '" readonly onclick="this.select()"></div><button type="button" class="btn sub" id="lcopy">リンクをコピー</button><div class="muted small" style="margin-top:8px">このリンクは本人の LINE で開いてください（開いた LINE が紐付きます）。10分を過ぎたら、もう一度「LINE を紐付ける」から出し直します。</div>',
+              onOpen: function (bg) { $('#lcopy', bg).onclick = function () { var el = $('#llink', bg); el.select(); try { navigator.clipboard.writeText(el.value); toast('コピーしました'); } catch (e) { document.execCommand('copy'); toast('コピーしました'); } }; } });
+          });
+        }; });
+        $$('.lunlink', $('#list')).forEach(function (b) { b.onclick = function () {
+          confirmBox('LINE の紐付けを外す', b.dataset.email + ' の LINE の紐付けを外します。確認待ちの通知は届かなくなります。', '外す', true).then(function (yes) { if (yes) api('staff.lineUnlink', { email: b.dataset.email }).then(function (x) { toast(x.ok ? x.message : x.error, x.ok ? '' : 'err'); if (x.ok) load(); }); });
+        }; });
       });
     };
     if (isAdmin) $('#save').onclick = function () { var d = formData($('#sf')); d.active = d.active === 'true'; busy($('#save'), true); api('staff.save', d).then(function (r) { busy($('#save'), false); toast(r.ok ? r.message : r.error, r.ok ? '' : 'err'); if (r.ok) load(); }); };

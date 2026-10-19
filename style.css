@@ -124,3 +124,40 @@ table.tbl td.actions .btn + .btn { margin-left: 4px; }
 .tabs button { padding: 6px 14px; border: 1px solid var(--line); background: #fff; border-radius: 8px; cursor: pointer; }
 .tabs button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
 #bulkbar { background: var(--blue-light); border-radius: 8px; padding: 4px 10px; }
+
+/* スマホ幅（2026-10-19 B-3。社長がスマホで運営する）：上のメニューは「☰」で折りたたみ、表は 1 件ずつのカードに。対象はホーム・LINE連携・生徒。ほかのページは「パソコンでご覧ください」の帯 */
+.topbar .navbtn { display: none; }
+.pc-note { display: none; }
+@media (max-width: 640px) {
+  .topbar { height: auto; min-height: 48px; padding: 0 12px; gap: 8px; flex-wrap: wrap; }
+  .topbar .brand { flex: 1; font-size: 14px; min-height: 48px; display: flex; align-items: center; }
+  .topbar .navbtn { display: inline-flex; align-items: center; background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.4); border-radius: 8px; padding: 4px 12px; font-size: 18px; line-height: 1.2; cursor: pointer; }
+  .topbar nav, .topbar .who { display: none; width: 100%; }
+  .topbar.open nav { display: flex; flex-direction: column; gap: 0; padding: 2px 0 6px; }
+  .topbar.open nav a { padding: 11px 10px; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,.14); border-radius: 0; }
+  .topbar.open .who { display: flex; justify-content: space-between; padding: 6px 0 12px; }
+  .page { padding: 12px 12px 60px; }
+  .page h2 { flex-wrap: wrap; gap: 2px 10px; font-size: 17px; }
+  .page h3 { font-size: 15px; }
+  .pc-note { display: block; }
+  .toolbar .grow { display: none; }
+  .form { grid-template-columns: 1fr; }
+  .modal-bg { padding: 8px 6px; }
+  .modal .mh, .modal .mb, .modal .mf { padding-left: 12px; padding-right: 12px; }
+  .readonly-box { grid-template-columns: 1fr; }
+  .stat { display: flex; margin: 0 0 6px; }
+  /* 表 → カード（app.js が thead の見出しを各 td の data-label に写す） */
+  table.tbl.cards, table.tbl.cards tbody, table.tbl.cards tr, table.tbl.cards td { display: block; width: 100%; }
+  table.tbl.cards thead { display: none; }
+  table.tbl.cards tr { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; padding: 6px 10px; background: #fff; }
+  table.tbl.cards tr.dim { background: #fafbfc; }
+  table.tbl.cards td { border: none; padding: 2px 0; display: flex; gap: 8px; align-items: baseline; white-space: normal; text-align: left; }
+  table.tbl.cards td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 11px; flex: 0 0 5.5em; white-space: nowrap; }
+  table.tbl.cards td:empty { display: none; }
+  table.tbl.cards td.arrow { display: none; }
+  table.tbl.cards td.actions { flex-wrap: wrap; gap: 4px; padding-top: 6px; }
+  table.tbl.cards td.actions::before { content: none; }
+  table.tbl.cards td.actions .btn + .btn { margin-left: 0; }
+  table.tbl.cards td.num { text-align: left; }
+  table.tbl.cards td input[type=text], table.tbl.cards td textarea, table.tbl.cards td select { max-width: 100%; }
+}

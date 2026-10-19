@@ -4,6 +4,7 @@ window.BEYOND_ADMIN = {
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFjbXNodWx6bGFzcmZsYmpzbmh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5ODIzMTAsImV4cCI6MjEwNTU1ODMxMH0.cuYpz5Cm5-X_4YJ_wW8zjlx2EfO5mVEo5CJstUX0K7Q',
   apiUrl: 'https://acmshulzlasrflbjsnhw.supabase.co/functions/v1/admin',
   schoolName: 'ビヨンド',
+  liffUrl: 'https://liff.line.me/2011635422-YUCoskrr',   // 生徒の画面の LIFF の URL（web/config.js の liffId）。スタッフの LINE の紐付けのリンクに使う（2026-10-19）。本番用の config.js では本番の LIFF に
   envLabel: '開発用',   // 本番用の config.js では空にする
   // 開発用：メール＋パスワードのログイン欄を出す（PC で開いたときだけ。Edge Function 側も ADMIN_ALLOW_PASSWORD がないと通さない。本番用の config.js では false）
   devLogin: location.hostname === 'localhost' || location.hostname === '127.0.0.1',
