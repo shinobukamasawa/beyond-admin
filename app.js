@@ -720,8 +720,8 @@
       $('#body').innerHTML = '<div class="card"><h3 style="margin-top:0">先生別の件数</h3><table class="tbl"><thead><tr><th>先生</th><th>実施</th><th>期限後欠席（当日欠席）</th><th>うち回数戻し</th><th>期限内キャンセル</th><th>休講</th><th>予定（今日以降）</th></tr></thead><tbody>' +
         r.summary.map(function (x) { return '<tr' + (x.active ? '' : ' class="dim"') + '><td class="nowrap">' + esc(x.teacherName) + '</td><td class="num">' + x.done + '</td><td class="num">' + x.absent + '</td><td class="num">' + x.refunded + '</td><td class="num">' + x.cancelled + '</td><td class="num">' + x.closed + '</td><td class="num muted">' + x.planned + '</td></tr>'; }).join('') + '</tbody></table>' +
         '<div class="muted small" style="margin-top:6px">先生には、この画面を直接見せず、先生ごとの件数を伝えます（ほかの先生の生徒名が載るため）。Excel の先生ごとのシートは、その1枚だけを切り出して渡せます。金額は出しません。</div></div>' +
-        '<div class="card"><h3 style="margin-top:0">明細（日付順）</h3>' + (r.detail.length ? '<table class="tbl"><thead><tr><th>日付</th><th>時間</th><th>先生</th><th>生徒</th><th>コース</th><th>区分</th><th>回数戻し</th><th>予約ID</th></tr></thead><tbody>' +
-        r.detail.map(function (b) { return '<tr class="' + (b.kind === '予定' ? 'dim' : '') + '"><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td><td class="nowrap">' + esc(b.teacherName) + '</td><td class="nowrap">' + esc(b.studentName) + '</td><td class="nowrap">' + esc(b.course) + '</td><td><span class="tag ' + (kc[b.kind] || '') + '">' + esc(b.kind) + '</span></td><td class="small">' + (b.refundedAt ? '戻した：' + esc(b.refundReason) : '') + '</td><td class="small">' + esc(b.id) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">この月の予約はありません</div>') + '</div>';
+        '<div class="card"><h3 style="margin-top:0">明細（日付順）</h3>' + (r.detail.length ? '<table class="tbl"><thead><tr><th>日付</th><th>時間</th><th>先生</th><th>生徒</th><th>コース</th><th>オンライン</th><th>区分</th><th>回数戻し</th><th>予約ID</th></tr></thead><tbody>' +
+        r.detail.map(function (b) { return '<tr class="' + (b.kind === '予定' ? 'dim' : '') + '"><td class="nowrap">' + fmtD(b.date) + '</td><td class="nowrap">' + hm(b.start) + '〜' + hm(b.end) + '</td><td class="nowrap">' + esc(b.teacherName) + '</td><td class="nowrap">' + esc(b.studentName) + '</td><td class="nowrap">' + esc(b.course) + '</td><td>' + (b.online ? '<span class="tag blue">オンライン</span>' : '') + '</td><td><span class="tag ' + (kc[b.kind] || '') + '">' + esc(b.kind) + '</span></td><td class="small">' + (b.refundedAt ? '戻した：' + esc(b.refundReason) : '') + '</td><td class="small">' + esc(b.id) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="muted">この月の予約はありません</div>') + '</div>';
       $('#xlsx').onclick = function () {
         var at = fmtNow();
         var summary = [['対象月', month], ['出力日時', at], ['実施＝予約中で今日より前。期限後欠席＝当日欠席（50%）。休講＝学校都合（数えない）。金額は出しません'], [], ['先生', '実施', '期限後欠席（当日欠席）', 'うち回数戻し', '期限内キャンセル', '休講', '予定（今日以降）']]
@@ -729,8 +729,8 @@
         var sheets = [{ name: 'まとめ', rows: summary }];
         r.summary.forEach(function (x) {
           var mine = r.detail.filter(function (b) { return b.teacherId === x.teacherId; });
-          sheets.push({ name: x.teacherName, rows: [['先生', x.teacherName, '対象月', month, '出力日時', at], ['実施', x.done, '期限後欠席', x.absent, 'うち回数戻し', x.refunded, '期限内キャンセル', x.cancelled, '休講', x.closed], [], ['日付', '曜日', '開始', '終了', '生徒', 'コース', '区分', '回数戻し理由', '予約ID']]
-            .concat(mine.map(function (b) { return [b.date, b.weekday, hm(b.start), hm(b.end), b.studentName, b.course, b.kind, b.refundedAt ? b.refundReason : '', b.id]; })) });
+          sheets.push({ name: x.teacherName, rows: [['先生', x.teacherName, '対象月', month, '出力日時', at], ['実施', x.done, '期限後欠席', x.absent, 'うち回数戻し', x.refunded, '期限内キャンセル', x.cancelled, '休講', x.closed], [], ['日付', '曜日', '開始', '終了', '生徒', 'コース', 'オンライン', '区分', '回数戻し理由', '予約ID']]
+            .concat(mine.map(function (b) { return [b.date, b.weekday, hm(b.start), hm(b.end), b.studentName, b.course, b.online ? 'オンライン' : '', b.kind, b.refundedAt ? b.refundReason : '', b.id]; })) });
         });
         xlsx('ビヨンド_実績_' + month + '.xlsx', sheets, '実績一覧', r.detail.length, month);
       };
